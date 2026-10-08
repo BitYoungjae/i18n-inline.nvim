@@ -1,7 +1,10 @@
 # Design notes
 
 Background, measurements and decisions that shaped the implementation.
-Written for future maintenance; the README covers usage. The generalization
+Written for future maintenance; the README covers usage. The measurements
+come from three private production codebases, called `cljs-app`
+(ClojureScript), `next-app` (Next.js + next-intl) and `dart-app` (Flutter)
+here. The generalization
 requirements and their evidence live in `REQUIREMENTS.md`.
 
 ## Problem
