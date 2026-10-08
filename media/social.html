@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- GitHub social preview (1280x640): the hero shot's window, cropped
+         out of its stage padding, next to the name and a one-line pitch. -->
+    <style>
+      @font-face {
+        font-family: 'UI';
+        src: url('node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: 'Term';
+        src: url('.cache/fonts/JetBrainsMonoNerdFont-Regular.ttf');
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      #card {
+        position: relative;
+        width: 1280px;
+        height: 640px;
+        overflow: hidden;
+        background:
+          radial-gradient(900px 480px at 0% 0%, rgba(122, 162, 247, 0.3), transparent 60%),
+          radial-gradient(800px 500px at 100% 100%, rgba(187, 154, 247, 0.26), transparent 60%),
+          linear-gradient(180deg, #121423 0%, #0d0e18 100%);
+        font-family: 'UI', sans-serif;
+        color: #e6e9ff;
+      }
+      #card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse at 30% 50%, black 20%, transparent 75%);
+      }
+      .copy {
+        position: absolute;
+        left: 72px;
+        top: 0;
+        bottom: 0;
+        width: 430px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 22px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 50px;
+        font-weight: 750;
+        letter-spacing: -0.025em;
+        line-height: 1.05;
+      }
+      h1 span {
+        color: #7aa2f7;
+      }
+      p {
+        margin: 0;
+        font-size: 23px;
+        line-height: 1.4;
+        color: rgba(220, 226, 255, 0.78);
+      }
+      code {
+        font-family: 'Term', monospace;
+        font-size: 0.9em;
+        color: #9ece6a;
+      }
+      .marks {
+        display: flex;
+        gap: 18px;
+        font-family: 'Term', monospace;
+        font-size: 17px;
+        color: rgba(220, 226, 255, 0.6);
+      }
+      .marks b {
+        font-weight: 400;
+      }
+      .warn {
+        color: #e0af68;
+      }
+      .err {
+        color: #db4b4b;
+      }
+      .stacks {
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        color: rgba(220, 226, 255, 0.5);
+      }
+      /* the hero image is 2x: stage padding is 88 x 80 px around the window */
+      .shot {
+        position: absolute;
+        left: 548px;
+        top: 120px;
+        width: 888px;
+        height: 584px;
+        overflow: hidden;
+        border-radius: 12px;
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.09),
+          0 30px 80px rgba(0, 0, 0, 0.6);
+      }
+      .shot img {
+        width: 976px;
+        margin: -40px 0 0 -44px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="card">
+      <div class="copy">
+        <h1>i18n-inline<span>.nvim</span></h1>
+        <p>The real translation next to every <code>t('key')</code>, and a flag where code and files disagree.</p>
+        <div class="marks"><b>value</b><b class="warn">≠ drift</b><b class="err">✗ missing</b></div>
+        <div class="stacks">i18next · next-intl · vue-i18n · Flutter · gettext</div>
+      </div>
+      <div class="shot"><img src="../assets/hero.png" /></div>
+    </div>
+  </body>
+</html>

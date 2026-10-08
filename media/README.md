@@ -34,6 +34,10 @@ instead of vendoring:
 - `lib/record.mjs`: the scene API (`keys`, `type`, `hold`, `wait`, `cast`).
 - `lib/output.mjs`, `stage.html`: frame painting and GIF encoding.
 
+`node social.mjs` renders `../assets/social.png` from `social.html` (run
+it after the hero scene). It is the repository's social preview, which
+GitHub only takes as an upload under Settings → General.
+
 Timing is scripted, not measured: a frame lasts as long as the scene says,
 however long Neovim took to draw it. Use `wait(ms)` when a real timer has
 to run out first, such as the highlight after a jump.
