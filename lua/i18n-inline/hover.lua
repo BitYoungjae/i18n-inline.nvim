@@ -76,7 +76,12 @@ function M.hover()
       value = nil
     end
     local display = value ~= nil and util.display_value(value) or '(missing)'
-    local mismatch = m.fb ~= nil and value ~= nil and m.fb ~= value
+    -- Only the preview language is expected to mirror the code fallback;
+    -- other languages are translations, so differing there is not drift.
+    local mismatch = lang == cfg.preview_lang
+      and m.fb ~= nil
+      and value ~= nil
+      and m.fb ~= value
     local label = lang .. (' '):rep(pad - api.nvim_strwidth(lang)) .. '  '
     lines[#lines + 1] = label .. display
     line_meta[#lines] = { lang = lang, mismatch = mismatch, label_width = api.nvim_strwidth(label) }
