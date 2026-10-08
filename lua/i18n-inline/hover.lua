@@ -11,23 +11,10 @@ local util = require('i18n-inline.util')
 
 local M = {}
 
-local function match_at(buf, row)
-  local st = preview.state(buf)
-  if not st or not st.matches then
-    return nil
-  end
-  for _, m in ipairs(st.matches) do
-    if row >= m.row_start and row <= m.row_end then
-      return m
-    end
-  end
-  return nil
-end
-
 function M.hover()
   local buf = api.nvim_get_current_buf()
   local row = api.nvim_win_get_cursor(0)[1] - 1
-  local m = match_at(buf, row)
+  local m = preview.match_at(buf, row)
   if not m then
     vim.notify('[i18n-inline] no i18n call under the cursor', vim.log.levels.INFO)
     return

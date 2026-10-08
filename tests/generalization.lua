@@ -716,6 +716,199 @@ return function(t, eq, ok_, make_project)
     ok_(float_win ~= nil, 'no floating window opened')
   end)
 
+
+  -- ===== :I18nJump (jump to the translation file line) =====
+
+  t('formats: json find_line locates flat, nested, and literal-dot keys', function()
+    local lines = {
+      '{',
+      '  "flat": "v1",',
+      '  "a.b": "literal",',
+      '  "a": {',
+      '    "b": "nested",',
+      '    "deep": { "leaf": "v2" }',
+      '  },',
+      '  "empty": {},',
+      '  "sibling": "v3"',
+      '}'
+    }
+    local find = formats.registry.json.find_line
+    eq({ find(lines, 'flat', { separator = '.' }) }, { 2, 3 })
+    -- nested wins over the literal dotted key (decode collision policy)
+    eq({ find(lines, 'a.b', { separator = '.' }) }, { 5, 5 })
+    -- deep leaf via the raw-occurrence fallback (inline object line)
+    eq({ find(lines, 'a.deep.leaf', { separator = '.' }) }, { 6, 15 })
+    eq({ find(lines, 'sibling', { separator = '.' }) }, { 9, 3 })
+    ok_(find(lines, 'absent', { separator = '.' }) == nil)
+    -- minified: everything on one line — fallback lands on the leaf column
+    local mini = { '{"x":{"y":"v"},"q":"w"}' }
+    eq({ find(mini, 'x.y', { separator = '.' }) }, { 1, 7 })
+    eq({ find(mini, 'q', { separator = '.' }) }, { 1, 16 })
+  end)
+
+  t('formats: po find_line anchors the msgid', function()
+    local lines = { 'msgid "Save changes"', 'msgstr "변경사항 저장"', '', 'msgid "Other"' }
+    local find = formats.registry.po.find_line
+    eq({ find(lines, 'Save changes', {}) }, { 1, 7 })
+    ok_(find(lines, 'Absent', {}) == nil)
+  end)
+
+  t('jump E2E: opens the preview language file at the key line', function()
+    reset_all()
+    local root = make_project({
+      preset = 'next-intl',
+      dir = 'messages',
+      preview_lang = 'ko',
+      keymaps = { jump = '<leader>ij' },
+    }, {
+      ko = { error = { retry = '재시도', deep = { title = '제목' } } },
+    }, 'messages')
+    -- make ko.json pretty-printed with known line positions
+    local fh = assert(io.open(root .. '/messages/ko.json', 'w'))
+    fh:write('{\n  "error": {\n    "retry": "재시도",\n    "deep": {\n      "title": "제목"\n    }\n  }\n}\n')
+    fh:close()
+
+    local buf = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(buf, root .. '/src/page.tsx')
+    api.nvim_buf_set_lines(buf, 0, -1, false, {
+      "const t = useTranslations('error');",
+      "t('retry');",
+      "t('deep.title');",
+    })
+    vim.bo[buf].filetype = 'typescriptreact'
+    preview.refresh(buf)
+    local win = api.nvim_open_win(buf, true, { relative = 'editor', row = 0, col = 0, width = 60, height = 5 })
+
+    -- buffer-local keymap from the project file
+    local mapinfo = api.nvim_buf_call(buf, function()
+      return vim.fn.maparg('<leader>ij', 'n', false, true)
+    end)
+    ok_(mapinfo.buffer == 1, '<leader>ij not buffer-local')
+
+    -- jump from the retry call (row 1)
+    api.nvim_win_set_cursor(win, { 2, 3 })
+    require('i18n-inline.jump').jump()
+    ok_(api.nvim_buf_get_name(0):match('messages/ko%.json$') ~= nil, api.nvim_buf_get_name(0))
+    eq(api.nvim_win_get_cursor(0), { 3, 4 }) -- "retry" line, col of the key
+
+    -- jump to the deep leaf from row 2
+    api.nvim_buf_set_name(api.nvim_get_current_buf(), root .. '/messages/ko.json') -- keep name stable
+    api.nvim_set_current_buf(buf)
+    api.nvim_win_set_cursor(win, { 3, 3 })
+    require('i18n-inline.jump').jump()
+    eq(api.nvim_win_get_cursor(0), { 5, 6 }) -- "title" inside deep
+
+    api.nvim_win_close(win, true)
+    api.nvim_buf_delete(buf, { force = true })
+  end)
+
+  t('jump E2E: missing in preview falls back to source with a warning', function()
+    reset_all()
+    local root = make_project({
+      preset = 'next-intl',
+      dir = 'messages',
+      preview_lang = 'ko',
+      source_lang = 'en',
+    }, {
+      en = { error = { onlyEn = 'EN-only' } },
+      ko = {},
+    }, 'messages')
+    local fh = assert(io.open(root .. '/messages/en.json', 'w'))
+    fh:write('{\n  "error": {\n    "onlyEn": "EN-only"\n  }\n}\n')
+    fh:close()
+    local fh2 = assert(io.open(root .. '/messages/ko.json', 'w'))
+    fh2:write('{}\n')
+    fh2:close()
+
+    local buf = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(buf, root .. '/src/page.tsx')
+    api.nvim_buf_set_lines(buf, 0, -1, false, { "const t = useTranslations('error');", "t('onlyEn');" })
+    vim.bo[buf].filetype = 'typescriptreact'
+    preview.refresh(buf)
+    local win = api.nvim_open_win(buf, true, { relative = 'editor', row = 0, col = 0, width = 60, height = 5 })
+    api.nvim_win_set_cursor(win, { 2, 3 })
+
+    require('i18n-inline.jump').jump()
+    ok_(api.nvim_buf_get_name(0):match('messages/en%.json$') ~= nil, api.nvim_buf_get_name(0))
+    eq(api.nvim_win_get_cursor(0), { 3, 4 })
+
+    api.nvim_win_close(win, true)
+    api.nvim_buf_delete(buf, { force = true })
+  end)
+
+  t('jump E2E: bang fills quickfix with every language having the key', function()
+    reset_all()
+    local root = make_project({
+      dir = 'tr',
+      preview_lang = 'ko',
+      patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' },
+    }, {
+      ko = { shared = '공유', only_ko = '한국어만' },
+      en = { shared = 'Shared' },
+      ja = { shared = '共有' },
+    })
+    local buf = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(buf, root .. '/src/x.cljs')
+    api.nvim_buf_set_lines(buf, 0, -1, false, { '(tr [:shared "x"])' })
+    vim.bo[buf].filetype = 'clojure'
+    preview.refresh(buf)
+    local win = api.nvim_open_win(buf, true, { relative = 'editor', row = 0, col = 0, width = 60, height = 5 })
+    api.nvim_win_set_cursor(win, { 1, 5 })
+
+    vim.fn.setqflist({}, ' ')
+    require('i18n-inline.jump').jump({ bang = true })
+    local items = vim.fn.getqflist()
+    eq(#items, 3) -- ko, en, ja all have 'shared'; only_ko is not the jumped key
+    local files = {}
+    for _, it in ipairs(items) do
+      local f = it.filename
+      if (f == nil or f == '') and it.bufnr and it.bufnr ~= 0 then
+        f = api.nvim_buf_get_name(it.bufnr)
+      end
+      files[vim.fs.basename(f)] = true
+    end
+    ok_(files['ko.json'] and files['en.json'] and files['ja.json'])
+
+    api.nvim_win_close(win, true)
+    api.nvim_buf_delete(buf, { force = true })
+  end)
+
+  t('jump E2E: ask mode goes through vim.ui.select', function()
+    reset_all()
+    local root = make_project({
+      dir = 'tr',
+      preview_lang = 'ko',
+      patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' },
+      jump = { lang = 'ask' },
+    }, {
+      ko = { k = '한국어' },
+      en = { k = 'English' },
+    })
+    local buf = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(buf, root .. '/src/x.cljs')
+    api.nvim_buf_set_lines(buf, 0, -1, false, { '(tr [:k "x"])' })
+    vim.bo[buf].filetype = 'clojure'
+    preview.refresh(buf)
+    local win = api.nvim_open_win(buf, true, { relative = 'editor', row = 0, col = 0, width = 60, height = 5 })
+    api.nvim_win_set_cursor(win, { 1, 5 })
+
+    local chosen
+    local orig_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      chosen = items
+      on_choice('en')
+    end
+    local ok_jump, err_jump = pcall(require('i18n-inline.jump').jump)
+    vim.ui.select = orig_select
+
+    ok_(ok_jump, tostring(err_jump))
+    ok_(chosen and #chosen == 2 and chosen[1] == 'ko', 'preview lang should sort first')
+    ok_(api.nvim_buf_get_name(0):match('tr/en%.json$') ~= nil, api.nvim_buf_get_name(0))
+
+    api.nvim_win_close(win, true)
+    api.nvim_buf_delete(buf, { force = true })
+  end)
+
   -- ===== back-compat: cljs-app shape unchanged =====
 
   t('back-compat: default config stays Clojure flat-key', function()

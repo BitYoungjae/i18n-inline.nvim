@@ -33,6 +33,9 @@ custom Lua pattern can describe.
 - **Display toggle** — `<Plug>(i18n-inline-toggle)` / `:I18nToggle` cycles
   inline display (`always → problems → never`) for the session; hover and the
   audit keep working in every mode.
+- **Jump to translation** — `<Plug>(i18n-inline-jump)` / `:I18nJump` opens
+  the translation file with the cursor on the key under the cursor
+  (`:I18nJump!` fills the quickfix with the key's line in every language).
 - **Project audit** — `:I18nCheck` scans the whole project into the quickfix
   list: fallback mismatches, missing keys, translations missing relative to
   the source language, and a summary of unused keys (with ignore globs for
@@ -69,12 +72,14 @@ mappings. Every action is reachable without any mapping:
 
 - `:I18nHover` / `<Plug>(i18n-inline-hover)`
 - `:I18nToggle` / `<Plug>(i18n-inline-toggle)`
+- `:I18nJump` / `<Plug>(i18n-inline-jump)` (`:I18nJump!` = all languages)
 - `:I18nCheck`
 
 To opt into keymaps, either set them yourself:
 
 ```lua
 vim.keymap.set('n', '<leader>ii', '<Plug>(i18n-inline-hover)', { desc = 'i18n translations' })
+vim.keymap.set('n', '<leader>ij', '<Plug>(i18n-inline-jump)', { desc = 'i18n jump to translation' })
 vim.keymap.set('n', '<leader>ui', '<Plug>(i18n-inline-toggle)', { desc = 'i18n toggle inline' })
 ```
 
@@ -82,7 +87,7 @@ or configure `keymaps` (applies to the buffers of each project, from
 `setup()` and the project file alike):
 
 ```lua
-opts = { keymaps = { hover = '<leader>ii', toggle = '<leader>ui' } }
+opts = { keymaps = { hover = '<leader>ii', jump = '<leader>ij', toggle = '<leader>ui' } }
 ```
 
 > Avoid `gK`-style mappings that LazyVim (and some LSP setups) claim at
@@ -158,7 +163,9 @@ Presets set `filetypes`, `patterns`, `namespace_patterns`, `aliases`,
 | `show` | `'always'` | `'always'` \| `'problems'` (drift only) \| `'never'` (popover/audit only) |
 | `hl` | see config.lua | highlight groups: match / mismatch / missing / underline |
 | `underline_mismatch` | `true` | underline mismatched fallback strings |
-| `keymaps` | `{}` | `{ hover = …, toggle = … }`; applied per project buffer |
+| `keymaps` | `{}` | `{ hover = …, jump = …, toggle = … }`; applied per project buffer |
+| `jump.lang` | `'preview'` | `:I18nJump` target: `'preview'` \| `'source'` \| `'ask'` (vim.ui.select) |
+| `jump.open` | `'edit'` | `'edit'` \| `'split'` \| `'vsplit'` \| `'tab'` \| `'quickfix'` (all languages; also `:I18nJump!`) |
 | `keymap` | `nil` | deprecated alias for `keymaps.hover` |
 | `extmark_priority` | `nil` | extmark priority for the inline text — raise it to draw over other plugins' virtual text |
 | `hover` | see config.lua | popover bounds: `{ max_len, width, max_height }` |
@@ -263,6 +270,11 @@ groups.
   you edit, immediately after you save, and when a translation file is saved.
 - The hover mapping inside a call (or on its key) opens the language
   popover; it closes when the cursor moves.
+- The jump mapping (`:I18nJump`) opens the preview language's file on the
+  key's line, briefly highlighted. When the key is missing there but exists
+  in `source_lang`, the source file opens with a warning instead.
+  `:I18nJump!` loads every language's occurrence into the quickfix for
+  walking them with `:cnext`.
 - `:I18nToggle` cycles inline display for the session.
 - `:I18nCheck` audits the project into the quickfix list.
 - `:checkhealth i18n-inline` verifies the setup: project found, files parse,

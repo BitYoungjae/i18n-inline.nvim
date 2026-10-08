@@ -1,10 +1,18 @@
 -- Translation file formats (R4).
 --
--- A format is a registry entry with one function:
+-- A format is a registry entry with two functions:
 --   decode(raw, cfg) -> flat key->value map  |  nil, err
--- The returned map is always FLAT: string key -> scalar value. Formats with
--- hierarchical data (nested JSON) flatten here using cfg.key_style /
--- cfg.separator, so scan/preview/hover/check never deal with paths.
+--   find_line(lines, key, cfg) -> lnum, col  | nil   (1-based; :I18nJump)
+-- The decoded map is always FLAT: string key -> scalar value. Formats with
+-- hierarchical data (nested JSON) flatten at decode time using
+-- cfg.key_style / cfg.separator, so scan/preview/hover/check never deal
+-- with paths.
+--
+-- Line location is a raw-text search over the file's lines, done at jump
+-- time only: the decode cache stores flat maps (positions are gone after
+-- flattening, and vim.json.decode never reported them), translation files
+-- are small enough that re-reading one is sub-millisecond, and the result
+-- is always fresh.
 --
 -- Adding a format = adding one registry entry; resolve.lua picks it by file
 -- extension (or the `format` config key) and the mtime+size cache contract
@@ -46,6 +54,73 @@ local function decode_json(raw, cfg)
   local out, segs = {}, {}
   flatten(decoded, cfg.separator or '.', out, segs, '', 1)
   return out
+end
+
+local function pattern_escape(s)
+  return (s:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
+end
+
+-- Map every leaf of a pretty-printed JSON object tree to its position,
+-- joining the structural path with \1 (unambiguous even when keys contain
+-- the separator). Indentation tracks nesting: closing brackets pop every
+-- frame at a deeper-or-equal indent, a `key: {` line pushes. Array elements
+-- are not indexed (translation catalogs don't address through arrays);
+-- leaves inside an array attach to the enclosing object path.
+local function json_leaf_positions(lines)
+  local out = {}
+  local stack = {}
+  for lnum, line in ipairs(lines) do
+    local indent = #line:match('^%s*')
+    if line:match('^%s*[}%]]') then
+      while #stack > 0 and stack[#stack].indent >= indent do
+        stack[#stack] = nil
+      end
+    end
+    local ind, opening, key = line:match('^(%s*)"([^"]+)"%s*:%s*([%[{]?)')
+    if key then
+      if opening == '{' and not line:match('%{%s*%}%s*,?%s*$') then
+        stack[#stack + 1] = { indent = indent, key = key }
+      elseif opening == '' then
+        local segs = {}
+        for _, fr in ipairs(stack) do
+          segs[#segs + 1] = fr.key
+        end
+        segs[#segs + 1] = key
+        out[table.concat(segs, '\1')] = { lnum = lnum, col = #ind + 1 }
+      end
+      -- inline `{…}` or `[…]` values: leaves inside are invisible here and
+      -- fall through to the raw-occurrence fallback in json_find_line
+    end
+  end
+  return out
+end
+
+-- JSON line lookup: structural path first (nested wins, matching the
+-- decode collision policy), then the key as a whole (flat files, literal
+-- separator characters inside a key), then a raw first occurrence of the
+-- quoted last segment (minified or oddly formatted files still land
+-- somewhere useful).
+local function json_find_line(lines, key, cfg)
+  local positions = json_leaf_positions(lines)
+  local lookup = { positions[key] }
+  local segs = vim.split(key, cfg.separator or '.', { plain = true })
+  if #segs > 1 then
+    table.insert(lookup, 1, positions[table.concat(segs, '\1')])
+  end
+  for _, pos in ipairs(lookup) do
+    if pos then
+      return pos.lnum, pos.col
+    end
+  end
+  local leaf = segs[#segs]
+  local pat = '"' .. pattern_escape(leaf) .. '"'
+  for lnum, line in ipairs(lines) do
+    local col = line:find(pat)
+    if col then
+      return lnum, col
+    end
+  end
+  return nil
 end
 
 -- Unescape a gettext string literal body: \\, \", \n, \t.
@@ -145,10 +220,22 @@ local function decode_arb(raw, cfg)
   return out
 end
 
+-- PO line lookup: the msgid line (multiline msgids anchored at their
+-- `msgid ""` start are not matched — the jump falls back to the file top).
+local function po_find_line(lines, key, _cfg)
+  local pat = '^%s*msgid%s+"' .. pattern_escape(key) .. '"%s*$'
+  for lnum, line in ipairs(lines) do
+    if line:find(pat) then
+      return lnum, (line:find('"'))
+    end
+  end
+  return nil
+end
+
 local registry = {
-  json = { decode = decode_json, extensions = { 'json' } },
-  arb = { decode = decode_arb, extensions = { 'arb' } },
-  po = { decode = decode_po, extensions = { 'po' } },
+  json = { decode = decode_json, find_line = json_find_line, extensions = { 'json' } },
+  arb = { decode = decode_arb, find_line = json_find_line, extensions = { 'arb' } },
+  po = { decode = decode_po, find_line = po_find_line, extensions = { 'po' } },
 }
 
 function M.names()

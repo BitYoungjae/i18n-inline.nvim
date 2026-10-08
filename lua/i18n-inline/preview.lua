@@ -47,6 +47,20 @@ function M.state(buf)
   return state[real_buf(buf)]
 end
 
+-- The match spanning `row` in `buf`, if any (shared by hover and jump).
+function M.match_at(buf, row)
+  local st = state[real_buf(buf)]
+  if not st or not st.matches then
+    return nil
+  end
+  for _, m in ipairs(st.matches) do
+    if row >= m.row_start and row <= m.row_end then
+      return m
+    end
+  end
+  return nil
+end
+
 -- Cycle the inline display mode for the session and re-render.
 -- Returns the new mode ('always' | 'problems' | 'never').
 function M.toggle()
@@ -232,8 +246,9 @@ end
 -- configuration when a buffer's project resolves — so project-file keymaps
 -- work, and nothing leaks to unrelated buffers.
 local ACTIONS = {
-  hover = '<Plug>(i18n-inline-hover)',
-  toggle = '<Plug>(i18n-inline-toggle)',
+  hover = { plug = '<Plug>(i18n-inline-hover)', desc = 'i18n translations popover' },
+  toggle = { plug = '<Plug>(i18n-inline-toggle)', desc = 'i18n cycle inline display' },
+  jump = { plug = '<Plug>(i18n-inline-jump)', desc = 'i18n jump to translation file' },
 }
 
 function M._unset_keymaps(buf, st)
@@ -246,19 +261,19 @@ function M._unset_keymaps(buf, st)
 end
 
 local function apply_keymaps(buf, st, cfg)
-  local sig = tostring(cfg.keymaps and cfg.keymaps.hover) .. '|' .. tostring(cfg.keymaps and cfg.keymaps.toggle)
+  local sig = vim.inspect(cfg.keymaps)
   if st.keymap_sig == sig then
     return
   end
   M._unset_keymaps(buf, st)
   st.set_keymaps = {}
-  for action, plug in pairs(ACTIONS) do
+  for action, def in pairs(ACTIONS) do
     local lhs = cfg.keymaps and cfg.keymaps[action]
     if lhs then
-      vim.keymap.set('n', lhs, plug, {
+      vim.keymap.set('n', lhs, def.plug, {
         buffer = buf,
         silent = true,
-        desc = action == 'hover' and 'i18n translations popover' or 'i18n toggle inline previews',
+        desc = def.desc,
       })
       st.set_keymaps[action] = lhs
     end

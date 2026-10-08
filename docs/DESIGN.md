@@ -37,8 +37,10 @@ resolve.lua   project discovery (walk-up), per-project cfg, mtime+size file cach
 scan.lua      pattern scan (arity-dispatched), namespace bindings, fallback
               extraction, placeholder normalization, status classification
 preview.lua   per-buffer state, debounced refresh, extmark rendering, display
-              toggle, per-buffer keymaps
+              toggle, match lookup (shared by hover/jump), per-buffer keymaps
 hover.lua     per-language popover (own float, close-on-move autocmds, bounds)
+jump.lua      :I18nJump — open the translation file at the key under the
+              cursor (per-format line location via formats.find_line)
 check.lua     project-wide audit -> quickfix, batched; source-lang gaps,
               ignore globs, namespace-aware unused detection
 health.lua    :checkhealth — project, formats, sample resolution rate
@@ -124,6 +126,21 @@ Key decisions (generalization round, settling REQUIREMENTS' open questions):
   Extmark `priority` is user-configurable for stacking (Q6b); the plugin
   anchors inline right after the closing quote and never touches other
   namespaces (coexistence failures are visual only).
+- **Jump locates lines by raw-text search at jump time, not via the decode
+  cache** (:I18nJump round). The cache stores flat key→value maps — positions
+  are destroyed by flattening and `vim.json.decode` never reports them — and
+  translation files are small, so re-reading one on demand is sub-millisecond
+  and always fresh. Each format owns a `find_line(lines, key, cfg)` next to
+  its decoder: JSON/ARB resolve structural paths with an indentation-tracked
+  stack (nested beats literal separator characters, matching the decode
+  collision policy; inline `{…}` values and minified files fall back to the
+  first raw occurrence of the quoted leaf — column included, so the cursor
+  still lands on the key), PO anchors the msgid line. Missing in the target
+  language falls back to `source_lang` when it has the key — that is where a
+  fix starts. `:I18nJump!`/`jump.open='quickfix'` puts every language's
+  occurrence in the quickfix, solving "which language?" without a picker;
+  `jump.lang='ask'` defers to `vim.ui.select` (which picks up the user's
+  picker UI for free).
 - **No default keymaps (R6.7).** Every action ships as a `<Plug>` mapping
   plus a command; `keymaps` config (and the deprecated `keymap`) is applied
   buffer-locally when a project resolves — which also fixes the original
@@ -193,6 +210,8 @@ collision policy, PO parsing, namespace composition (both presets), alias
 filtering, backtick/bounded fallbacks, prop fallbacks, placeholder
 normalization, preset expansion and array-replacement merge semantics,
 project-file keymaps, the display-mode cycle, source-language gaps, ignore
-globs, and Flutter identifier accessors (arb decoding, fallback none).
+globs, Flutter identifier accessors (arb decoding, fallback none), and jump
+line-location (flat/nested/literal-dot/minified JSON, PO, E2E jump with
+missing→source fallback, quickfix variant, ask mode).
 Set `I18N_SMOKE_REPO` to also scan a real ClojureScript repository and
 assert sane totals.

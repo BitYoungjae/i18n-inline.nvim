@@ -70,7 +70,7 @@ end
 -- ===== module loads =====
 
 t('modules load', function()
-  for _, m in ipairs({ 'config', 'util', 'scan', 'resolve', 'preview', 'hover', 'check' }) do
+  for _, m in ipairs({ 'config', 'util', 'formats', 'presets', 'scan', 'resolve', 'preview', 'hover', 'jump', 'check' }) do
     ok_(type(require('i18n-inline.' .. m)) == 'table', 'failed to load i18n-inline.' .. m)
   end
 end)

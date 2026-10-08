@@ -78,6 +78,13 @@ function M.setup(opts)
     vim.notify(('[i18n-inline] inline previews: %s'):format(mode), vim.log.levels.INFO)
   end, { desc = 'i18n: cycle inline display (always/problems/never) for the session' })
 
+  api.nvim_create_user_command('I18nJump', function(ev)
+    require('i18n-inline.jump').jump({ bang = ev.bang })
+  end, {
+    bang = true,
+    desc = 'i18n: open the translation file at the key under the cursor (! = all languages into quickfix)',
+  })
+
   -- Handle buffers opened before setup() ran (lazy loading)
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf) then
@@ -100,6 +107,10 @@ function M.toggle()
   local mode = require('i18n-inline.preview').toggle()
   vim.notify(('[i18n-inline] inline previews: %s'):format(mode), vim.log.levels.INFO)
   return mode
+end
+
+function M.jump(opts)
+  require('i18n-inline.jump').jump(opts)
 end
 
 function M.check()

@@ -91,14 +91,25 @@ local defaults = {
   },
   underline_mismatch = true, -- underline the fallback string on mismatch
   -- Action keymaps (R6.7): no defaults ship — map `<Plug>(i18n-inline-hover)`
-  -- / `<Plug>(i18n-inline-toggle)` or :I18nHover / :I18nToggle yourself, or
-  -- set these. Applied per buffer (buffer-local) once its project resolves,
-  -- so they also work from the project file and never leak globally.
+  -- / `<Plug>(i18n-inline-toggle)` / `<Plug>(i18n-inline-jump)` or
+  -- :I18nHover / :I18nToggle / :I18nJump yourself, or set these. Applied per
+  -- buffer (buffer-local) once its project resolves, so they also work from
+  -- the project file and never leak globally.
   keymaps = {
     hover = nil,
     toggle = nil,
+    jump = nil,
   },
   keymap = nil, -- deprecated alias for keymaps.hover
+  -- :I18nJump — open the translation file at the key under the cursor.
+  -- lang: 'preview' | 'source' | 'ask' (vim.ui.select);
+  -- open: 'edit' | 'split' | 'vsplit' | 'tab' | 'quickfix' (all languages
+  -- into the quickfix list; also :I18nJump!). Missing in the target
+  -- language falls back to source_lang when it has the key.
+  jump = {
+    lang = 'preview',
+    open = 'edit',
+  },
   -- Extmark priority for the inline virtual text (R7.4): higher wins when
   -- several plugins draw virtual text at the same position. nil = Neovim
   -- default.
@@ -185,13 +196,24 @@ local function validate(cfg)
   end
   if cfg.keymaps ~= nil then
     if type(cfg.keymaps) ~= 'table' then
-      return 'keymaps must be a table { hover = …, toggle = … }'
+      return 'keymaps must be a table { hover = …, toggle = …, jump = … }'
     end
-    for _, k in ipairs({ 'hover', 'toggle' }) do
+    for _, k in ipairs({ 'hover', 'toggle', 'jump' }) do
       local v = cfg.keymaps[k]
       if v ~= nil and type(v) ~= 'string' then
         return ('keymaps.%s must be a string or null'):format(k)
       end
+    end
+  end
+  if cfg.jump ~= nil then
+    if type(cfg.jump) ~= 'table' then
+      return 'jump must be a table { lang = …, open = … }'
+    end
+    if not one_of(cfg.jump.lang, { 'preview', 'source', 'ask' }) then
+      return 'jump.lang must be "preview", "source" or "ask"'
+    end
+    if not one_of(cfg.jump.open, { 'edit', 'split', 'vsplit', 'tab', 'quickfix' }) then
+      return 'jump.open must be "edit", "split", "vsplit", "tab" or "quickfix"'
     end
   end
   return nil
