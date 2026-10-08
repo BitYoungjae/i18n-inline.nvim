@@ -1,79 +1,114 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="372" viewBox="0 0 960 372" font-family="'SF Mono','Menlo','DejaVu Sans Mono',monospace" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="680" viewBox="0 0 960 680" font-family="'SF Mono','Menlo','DejaVu Sans Mono',monospace" font-size="13">
   <!-- background -->
-  <rect width="960" height="372" rx="10" fill="#0f1117"/>
+  <rect width="960" height="680" fill="#08090d"/>
 
-  <!-- window title bar -->
-  <rect width="960" height="30" rx="10" fill="#16161e"/>
-  <rect y="20" width="960" height="10" fill="#16161e"/>
-  <circle cx="20" cy="15" r="5" fill="#f7768e"/>
-  <circle cx="38" cy="15" r="5" fill="#e0af68"/>
-  <circle cx="56" cy="15" r="5" fill="#9ece6a"/>
-  <text x="480" y="19" fill="#565f89" text-anchor="middle" font-size="12">report.cljs — nvim</text>
-
-  <!-- code -->
+  <!-- ===================== panel A: raw buffer ===================== -->
   <g>
-    <!-- 1 -->
+    <rect x="0" y="0" width="960" height="300" rx="10" fill="#0f1117"/>
+    <rect x="0" y="0" width="960" height="30" rx="10" fill="#16161e"/>
+    <rect x="0" y="20" width="960" height="10" fill="#16161e"/>
+    <circle cx="20" cy="15" r="5" fill="#f7768e"/>
+    <circle cx="38" cy="15" r="5" fill="#e0af68"/>
+    <circle cx="56" cy="15" r="5" fill="#9ece6a"/>
+    <text x="480" y="19" fill="#565f89" text-anchor="middle" font-size="12">report.cljs — nvim</text>
+    <text x="944" y="19" fill="#565f89" text-anchor="end" font-size="12" font-style="italic">without the plugin</text>
+
     <text x="34" y="62" fill="#3b4261">1</text>
     <text x="60" y="62"><tspan fill="#bb9af7">(defn</tspan> <tspan fill="#7dcfff">report-panel</tspan> <tspan fill="#89ddff">[]</tspan></text>
 
-    <!-- 2 -->
     <text x="34" y="86" fill="#3b4261">2</text>
     <text x="60" y="86"><tspan fill="#737aa2">  [</tspan><tspan fill="#f7768e">:section</tspan><tspan fill="#737aa2"> {</tspan><tspan fill="#f7768e">:class</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"panel"</tspan><tspan fill="#737aa2">}</tspan></text>
 
-    <!-- 3: match — gray preview right after the closing quote, inside the call -->
     <text x="34" y="110" fill="#3b4261">3</text>
-    <text x="60" y="110"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:h2</tspan><tspan fill="#737aa2"> (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-title</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Monthly report"</tspan><tspan fill="#565f89">  ; Monthly report</tspan><tspan fill="#737aa2">)]</tspan></text>
+    <text x="60" y="110"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:h2</tspan><tspan fill="#737aa2"> (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-title</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Monthly report"</tspan><tspan fill="#737aa2">)]</tspan></text>
 
-    <!-- 4: key line of the mismatch call (cursor sits here) -->
     <text x="34" y="134" fill="#3b4261">4</text>
     <text x="60" y="134"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:p</tspan><tspan fill="#737aa2"> (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-intro</tspan></text>
 
-    <!-- 5: mismatch — underlined fallback + warn preview -->
     <text x="34" y="158" fill="#3b4261">5</text>
-    <text x="60" y="158"><tspan fill="#737aa2">            </tspan><tspan fill="#9ece6a" text-decoration="underline">"Last 30 days."</tspan><tspan fill="#e0af68">  ; ≠ Past month.</tspan><tspan fill="#737aa2">)]</tspan></text>
+    <text x="60" y="158"><tspan fill="#737aa2">            </tspan><tspan fill="#9ece6a">"Last 30 days."</tspan><tspan fill="#737aa2">)]</tspan></text>
 
-    <!-- 6 -->
     <text x="34" y="182" fill="#3b4261">6</text>
     <text x="60" y="182"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:button</tspan><tspan fill="#737aa2"> {</tspan><tspan fill="#f7768e">:on-click</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#c0caf5">on-export</tspan><tspan fill="#737aa2">}</tspan></text>
 
-    <!-- 7: match -->
     <text x="34" y="206" fill="#3b4261">7</text>
-    <text x="60" y="206"><tspan fill="#737aa2">            (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-export</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Export CSV"</tspan><tspan fill="#565f89">  ; Export CSV</tspan><tspan fill="#737aa2">)]</tspan></text>
+    <text x="60" y="206"><tspan fill="#737aa2">            (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-export</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Export CSV"</tspan><tspan fill="#737aa2">)]</tspan></text>
 
-    <!-- 8 -->
     <text x="34" y="230" fill="#3b4261">8</text>
     <text x="60" y="230"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:span</tspan><tspan fill="#737aa2"> {</tspan><tspan fill="#f7768e">:class</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"hint"</tspan><tspan fill="#737aa2">}</tspan></text>
 
-    <!-- 9: missing key -->
     <text x="34" y="254" fill="#3b4261">9</text>
-    <text x="60" y="254"><tspan fill="#737aa2">            (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-note</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Optional"</tspan><tspan fill="#f7768e">  ; ✗ key not found</tspan><tspan fill="#737aa2">)]</tspan></text>
+    <text x="60" y="254"><tspan fill="#737aa2">            (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-note</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Optional"</tspan><tspan fill="#737aa2">)]</tspan></text>
 
-    <!-- 10 -->
     <text x="30" y="278" fill="#3b4261">10</text>
     <text x="60" y="278"><tspan fill="#737aa2">   ]</tspan><tspan fill="#737aa2">]</tspan><tspan fill="#89ddff">)</tspan></text>
   </g>
 
-  <!-- cursor block on line 4 (on the key) -->
-  <rect x="146" y="123" width="8" height="15" fill="#c0caf5" opacity="0.9"/>
-
-  <!-- hover popover -->
+  <!-- ===================== panel B: with the plugin ===================== -->
   <g>
-    <rect x="600" y="110" width="330" height="196" rx="8" fill="#1f2335" stroke="#3d59a1" stroke-width="1.5"/>
-    <!-- border title -->
-    <rect x="672" y="103" width="100" height="14" fill="#1f2335"/>
-    <text x="722" y="114" fill="#7dcfff" text-anchor="middle" font-size="12">report-intro</text>
+    <rect x="0" y="320" width="960" height="352" rx="10" fill="#0f1117"/>
+    <rect x="0" y="320" width="960" height="30" rx="10" fill="#16161e"/>
+    <rect x="0" y="340" width="960" height="10" fill="#16161e"/>
+    <circle cx="20" cy="335" r="5" fill="#f7768e"/>
+    <circle cx="38" cy="335" r="5" fill="#e0af68"/>
+    <circle cx="56" cy="335" r="5" fill="#9ece6a"/>
+    <text x="480" y="339" fill="#565f89" text-anchor="middle" font-size="12">report.cljs — nvim</text>
+    <text x="944" y="339" fill="#7dcfff" text-anchor="end" font-size="12" font-style="italic">with i18n-inline.nvim</text>
 
-    <text x="616" y="140" fill="#c0caf5"><tspan fill="#565f89">fallback: </tspan>Last 30 days.</text>
-    <text x="616" y="160" fill="#565f89">────────────────────────────</text>
-    <text x="616" y="184"><tspan fill="#e0af68">en    </tspan><tspan fill="#c0caf5">Past month.</tspan></text>
-    <text x="616" y="206"><tspan fill="#565f89">de    </tspan><tspan fill="#c0caf5">Daten des letzten Monats.</tspan></text>
-    <text x="616" y="228"><tspan fill="#565f89">ko    </tspan><tspan fill="#c0caf5">지난 30일 데이터</tspan></text>
-    <text x="616" y="250"><tspan fill="#565f89">ja    </tspan><tspan fill="#c0caf5">過去30日間のデータ</tspan></text>
-    <text x="616" y="272"><tspan fill="#565f89">…     </tspan><tspan fill="#565f89">9 more languages</tspan></text>
-    <text x="616" y="296" fill="#3b4261" font-size="11">gK — i18n translations</text>
+    <text x="34" y="382" fill="#3b4261">1</text>
+    <text x="60" y="382"><tspan fill="#bb9af7">(defn</tspan> <tspan fill="#7dcfff">report-panel</tspan> <tspan fill="#89ddff">[]</tspan></text>
+
+    <text x="34" y="406" fill="#3b4261">2</text>
+    <text x="60" y="406"><tspan fill="#737aa2">  [</tspan><tspan fill="#f7768e">:section</tspan><tspan fill="#737aa2"> {</tspan><tspan fill="#f7768e">:class</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"panel"</tspan><tspan fill="#737aa2">}</tspan></text>
+
+    <!-- 3: match — gray preview right after the closing quote, inside the call -->
+    <text x="34" y="430" fill="#3b4261">3</text>
+    <text x="60" y="430"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:h2</tspan><tspan fill="#737aa2"> (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-title</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Monthly report"</tspan><tspan fill="#565f89">  ; Monthly report</tspan><tspan fill="#737aa2">)]</tspan></text>
+
+    <!-- 4: key line of the mismatch call (cursor sits here) -->
+    <text x="34" y="454" fill="#3b4261">4</text>
+    <text x="60" y="454"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:p</tspan><tspan fill="#737aa2"> (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-intro</tspan></text>
+
+    <!-- 5: mismatch — underlined fallback + warn preview -->
+    <text x="34" y="478" fill="#3b4261">5</text>
+    <text x="60" y="478"><tspan fill="#737aa2">            </tspan><tspan fill="#9ece6a" text-decoration="underline">"Last 30 days."</tspan><tspan fill="#e0af68">  ; ≠ Past month.</tspan><tspan fill="#737aa2">)]</tspan></text>
+
+    <text x="34" y="502" fill="#3b4261">6</text>
+    <text x="60" y="502"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:button</tspan><tspan fill="#737aa2"> {</tspan><tspan fill="#f7768e">:on-click</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#c0caf5">on-export</tspan><tspan fill="#737aa2">}</tspan></text>
+
+    <!-- 7: match -->
+    <text x="34" y="526" fill="#3b4261">7</text>
+    <text x="60" y="526"><tspan fill="#737aa2">            (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-export</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Export CSV"</tspan><tspan fill="#565f89">  ; Export CSV</tspan><tspan fill="#737aa2">)]</tspan></text>
+
+    <text x="34" y="550" fill="#3b4261">8</text>
+    <text x="60" y="550"><tspan fill="#737aa2">   [</tspan><tspan fill="#f7768e">:span</tspan><tspan fill="#737aa2"> {</tspan><tspan fill="#f7768e">:class</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"hint"</tspan><tspan fill="#737aa2">}</tspan></text>
+
+    <!-- 9: missing key -->
+    <text x="34" y="574" fill="#3b4261">9</text>
+    <text x="60" y="574"><tspan fill="#737aa2">            (</tspan><tspan fill="#7dcfff">tr</tspan><tspan fill="#737aa2"> [</tspan><tspan fill="#ff9e64">:report-note</tspan><tspan fill="#737aa2"> </tspan><tspan fill="#9ece6a">"Optional"</tspan><tspan fill="#f7768e">  ; ✗ key not found</tspan><tspan fill="#737aa2">)]</tspan></text>
+
+    <text x="30" y="598" fill="#3b4261">10</text>
+    <text x="60" y="598"><tspan fill="#737aa2">   ]</tspan><tspan fill="#737aa2">]</tspan><tspan fill="#89ddff">)</tspan></text>
+
+    <!-- cursor block on line 4 (on the key) -->
+    <rect x="146" y="443" width="8" height="15" fill="#c0caf5" opacity="0.9"/>
+
+    <!-- hover popover -->
+    <rect x="600" y="430" width="330" height="196" rx="8" fill="#1f2335" stroke="#3d59a1" stroke-width="1.5"/>
+    <rect x="672" y="423" width="100" height="14" fill="#1f2335"/>
+    <text x="722" y="434" fill="#7dcfff" text-anchor="middle" font-size="12">report-intro</text>
+
+    <text x="616" y="460" fill="#c0caf5"><tspan fill="#565f89">fallback: </tspan>Last 30 days.</text>
+    <text x="616" y="480" fill="#565f89">────────────────────────────</text>
+    <text x="616" y="504"><tspan fill="#e0af68">en    </tspan><tspan fill="#c0caf5">Past month.</tspan></text>
+    <text x="616" y="526"><tspan fill="#565f89">de    </tspan><tspan fill="#c0caf5">Daten des letzten Monats.</tspan></text>
+    <text x="616" y="548"><tspan fill="#565f89">ko    </tspan><tspan fill="#c0caf5">지난 30일 데이터</tspan></text>
+    <text x="616" y="570"><tspan fill="#565f89">ja    </tspan><tspan fill="#c0caf5">過去30日間のデータ</tspan></text>
+    <text x="616" y="592"><tspan fill="#565f89">…     </tspan><tspan fill="#565f89">9 more languages</tspan></text>
+    <text x="616" y="616" fill="#3b4261" font-size="11">gK — i18n translations</text>
+
+    <!-- statusline -->
+    <rect x="0" y="640" width="960" height="32" fill="#16161e"/>
+    <text x="34" y="661" fill="#565f89" font-size="12">NORMAL  report.cljs  clojure  UTF-8            1 mismatch, 1 missing key  :I18nCheck</text>
   </g>
-
-  <!-- statusline -->
-  <rect y="340" width="960" height="32" fill="#16161e"/>
-  <text x="34" y="361" fill="#565f89" font-size="12">NORMAL  report.cljs  clojure  UTF-8            1 mismatch, 1 missing key  :I18nCheck</text>
 </svg>

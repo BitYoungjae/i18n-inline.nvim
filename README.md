@@ -4,8 +4,10 @@ Show the actual translation value next to every i18n call, while you edit.
 
 ![screenshot](assets/screenshot.svg)
 
-*Gray previews after each string show the value from the translation file —
-gray means it matches the fallback, `≠` marks drift, `✗` marks a missing key.*
+*Top: the raw buffer. Bottom: the same buffer with the plugin active — the
+gray text after each string (not present in the file) is the value from the
+translation file. Gray means it matches the fallback, `≠` marks drift, `✗`
+marks a missing key, and the popover shows `gK`.*
 
 When code contains `(tr [:billing-usage-title "Usage"])`, the string literal is
 only a fallback — the text users see comes from a translation file. The two
