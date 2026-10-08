@@ -80,7 +80,7 @@ All options (same keys in `setup()` and the project file):
 | `preview_lang` | `'ko'` | language shown inline |
 | `filetypes` | `{'clojure'}` | filetypes to scan |
 | `patterns` | see below | Lua patterns extracting the key (capture #1) |
-| `prefix` | `'  ; '` | inline preview prefix |
+| `prefix` | `'  '` | inline preview prefix |
 | `missing_text` | `'key not found'` | text shown for missing keys |
 | `max_len` | `60` | max preview length in runes |
 | `position` | `'inline'` | `'inline'` after the string, or `'eol'` |

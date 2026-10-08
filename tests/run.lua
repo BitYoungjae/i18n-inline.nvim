@@ -181,7 +181,7 @@ t('config.merge_project overrides and validates', function()
   ok_(merged ~= nil, err)
   eq(merged.dir, 'x')
   eq(merged.preview_lang, 'en')
-  eq(merged.prefix, '  ; ') -- default survives
+  eq(merged.prefix, '  ') -- default survives
 
   local _, err2 = config.merge_project({ patterns = { 42 } })
   ok_(err2:match('patterns') ~= nil, 'expected validation error, got: ' .. tostring(err2))
@@ -303,13 +303,13 @@ t('preview: renders virtual text with per-status styling', function()
   table.sort(virt, function(a, b)
     return a.row < b.row
   end)
-  eq(virt[1].text, '  ; 동일')
+  eq(virt[1].text, '  동일')
   eq(virt[1].hl, 'Comment')
-  eq(virt[2].text, '  ; ≠ 파일 값')
+  eq(virt[2].text, '  ≠ 파일 값')
   eq(virt[2].hl, 'DiagnosticWarn')
-  eq(virt[3].text, '  ; ✗ key not found')
+  eq(virt[3].text, '  ✗ key not found')
   eq(virt[3].hl, 'DiagnosticError')
-  eq(virt[4].text, '  ; 값 있음')
+  eq(virt[4].text, '  값 있음')
   eq(underlines, 1) -- only the mismatch gets underlined
 
   api.nvim_buf_delete(buf, { force = true })

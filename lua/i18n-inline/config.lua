@@ -33,7 +33,7 @@ local defaults = {
     '%(i18n/tr%-release%s*%[%s*:([%w%.%-_/]+)',
   },
   -- Display
-  prefix = '  ; ',
+  prefix = '  ',
   missing_text = 'key not found',
   max_len = 60, -- max preview length in runes
   position = 'inline', -- 'inline' | 'eol'
