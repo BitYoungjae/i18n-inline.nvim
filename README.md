@@ -4,6 +4,9 @@ Show the actual translation value next to every i18n call, while you edit.
 
 ![screenshot](assets/screenshot.svg)
 
+*Gray previews after each string show the value from the translation file —
+gray means it matches the fallback, `≠` marks drift, `✗` marks a missing key.*
+
 When code contains `(tr [:billing-usage-title "Usage"])`, the string literal is
 only a fallback — the text users see comes from a translation file. The two
 drift apart silently: a wording fix in the JSON never reaches the code, and a
