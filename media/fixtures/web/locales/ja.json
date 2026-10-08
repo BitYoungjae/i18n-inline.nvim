@@ -1,0 +1,20 @@
+{
+  "billing": {
+    "plan": {
+      "title": "プランを選択",
+      "subtitle": "いつでも解約できます。",
+      "perSeat": "1席あたり / 月"
+    },
+    "cta": {
+      "upgrade": "14日間の無料トライアルを開始"
+    },
+    "invoices": {
+      "empty": "請求書はまだありません",
+      "title": "請求書",
+      "date": "日付",
+      "amount": "金額",
+      "status": "ステータス",
+      "download": "PDFをダウンロード"
+    }
+  }
+}

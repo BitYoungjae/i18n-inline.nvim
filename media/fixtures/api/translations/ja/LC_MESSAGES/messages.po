@@ -1,0 +1,20 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#: app/billing/views.py:15
+msgid "That plan is no longer available."
+msgstr "このプランはもうありません。"
+
+#: app/billing/views.py:19
+msgid "Add a card to continue."
+msgstr "続けるにはカードを追加してください。"
+
+#: app/billing/views.py:23
+msgid "Welcome to the %(plan)s plan."
+msgstr "%(plan)sプランになりました。"
+
+#: app/billing/views.py:24
+msgid "Thanks for upgrading!"
+msgstr "アップグレードありがとうございます！"

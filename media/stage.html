@@ -1,0 +1,383 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: 'Term';
+        src: url('.cache/fonts/JetBrainsMonoNerdFont-Regular.ttf');
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'Term';
+        src: url('.cache/fonts/JetBrainsMonoNerdFont-Bold.ttf');
+        font-weight: 700;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: 'Term';
+        src: url('.cache/fonts/JetBrainsMonoNerdFont-Italic.ttf');
+        font-weight: 400;
+        font-style: italic;
+      }
+      @font-face {
+        font-family: 'Term';
+        src: url('.cache/fonts/JetBrainsMonoNerdFont-BoldItalic.ttf');
+        font-weight: 700;
+        font-style: italic;
+      }
+      @font-face {
+        font-family: 'UI';
+        src: url('node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+        font-weight: 100 900;
+      }
+
+      :root {
+        --pad-x: 44px;
+        --pad-y: 40px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #0b0c14;
+      }
+      #stage {
+        position: relative;
+        display: inline-block;
+        padding: var(--pad-y) var(--pad-x);
+        overflow: hidden;
+        background:
+          radial-gradient(1200px 520px at 12% -10%, rgba(122, 162, 247, 0.28), transparent 60%),
+          radial-gradient(900px 520px at 100% 110%, rgba(187, 154, 247, 0.24), transparent 60%),
+          radial-gradient(700px 400px at 85% 0%, rgba(125, 207, 255, 0.1), transparent 60%),
+          linear-gradient(180deg, #121423 0%, #0d0e18 100%);
+      }
+      /* faint grid texture */
+      #stage::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+        pointer-events: none;
+      }
+      .window {
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--term-bg);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.09),
+          0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+          0 24px 48px -12px rgba(0, 0, 0, 0.55),
+          0 48px 120px -24px rgba(10, 10, 30, 0.7);
+      }
+      .titlebar {
+        position: relative;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: color-mix(in srgb, var(--term-bg) 82%, black);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        font: 500 13px/1 'UI', sans-serif;
+        letter-spacing: 0.01em;
+        color: rgba(192, 202, 245, 0.62);
+      }
+      .lights {
+        position: absolute;
+        left: 16px;
+        top: 14px;
+        display: flex;
+        gap: 8px;
+      }
+      .lights i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);
+      }
+      .lights i:nth-child(1) {
+        background: #ff5f57;
+      }
+      .lights i:nth-child(2) {
+        background: #febc2e;
+      }
+      .lights i:nth-child(3) {
+        background: #28c840;
+      }
+      .title b {
+        font-weight: 600;
+        color: rgba(220, 226, 255, 0.9);
+      }
+      .term {
+        display: block;
+        padding: 10px 12px 6px;
+      }
+      canvas {
+        display: block;
+      }
+
+      /* keystroke overlay: below the window, so it never hides the screen */
+      #stage.casting {
+        padding-bottom: 104px;
+      }
+      #cast {
+        position: absolute;
+        left: 50%;
+        bottom: 30px;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px 10px 12px;
+        border-radius: 14px;
+        background: rgba(22, 24, 38, 0.78);
+        backdrop-filter: blur(18px) saturate(140%);
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.12),
+          0 12px 32px rgba(0, 0, 0, 0.45);
+        font: 500 15px/1 'UI', sans-serif;
+        color: #e6e9ff;
+        white-space: nowrap;
+      }
+      #cast[hidden] {
+        display: none;
+      }
+      #cast .keys {
+        display: flex;
+        gap: 5px;
+      }
+      #cast kbd {
+        min-width: 30px;
+        height: 30px;
+        padding: 0 9px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 7px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+          0 2px 0 rgba(0, 0, 0, 0.35);
+        font: 600 14px/1 'UI', sans-serif;
+        color: #fff;
+      }
+      #cast .label {
+        color: rgba(220, 226, 255, 0.72);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div class="window">
+        <div class="titlebar">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <div class="title" id="title"></div>
+        </div>
+        <div class="term"><canvas id="c"></canvas></div>
+      </div>
+      <div id="cast" hidden><span class="keys" id="keys"></span><span class="label" id="label"></span></div>
+    </div>
+    <script>
+      const FONT_SIZE = 15
+      const LINE_H = 22
+      const WIDE_SIZE = 16.5
+      const canvas = document.getElementById('c')
+      const ctx = canvas.getContext('2d')
+      let cellW = 9
+
+      const hex = (n) => '#' + n.toString(16).padStart(6, '0')
+      // East Asian wide / emoji: occupies two cells (the next cell is '').
+      const isWide = (row, col) => col + 1 < row.length && row[col + 1][0] === ''
+
+      function font(attr, size = FONT_SIZE) {
+        return `${attr.italic ? 'italic ' : ''}${attr.bold ? '700' : '400'} ${size}px Term, 'Noto Sans Mono CJK KR', 'Noto Sans CJK KR', monospace`
+      }
+
+      // Box drawing is painted on the cell grid, as GPU terminals do: font
+      // glyphs don't span the full line height and leave gaps and offsets.
+      // Arms: l(eft) r(ight) u(p) d(own); `round` marks arc corners.
+      const BOX = {
+        '─': 'lr', '━': 'lr', '│': 'ud', '┃': 'ud',
+        '┌': 'rd', '┐': 'ld', '└': 'ru', '┘': 'lu',
+        '╭': 'rd*', '╮': 'ld*', '╰': 'ru*', '╯': 'lu*',
+        '├': 'udr', '┤': 'udl', '┬': 'lrd', '┴': 'lru', '┼': 'lrud',
+      }
+      function drawBox(spec, x, y, color, dpr) {
+        const snap = (v) => Math.round(v * dpr) / dpr
+        const cx = snap(x + cellW / 2)
+        const cy = snap(y + LINE_H / 2)
+        const x0 = x
+        const x1 = x + cellW
+        const y0 = y
+        const y1 = y + LINE_H
+        ctx.strokeStyle = color
+        ctx.lineWidth = 1
+        ctx.lineCap = 'butt'
+        ctx.beginPath()
+        if (spec.endsWith('*')) {
+          const r = Math.min(cellW, LINE_H) / 2
+          const h = spec[0] === 'l' ? x0 : x1
+          const v = spec[1] === 'u' ? y0 : y1
+          const sx = Math.sign(h - cx)
+          const sy = Math.sign(v - cy)
+          ctx.moveTo(h, cy)
+          ctx.lineTo(cx + sx * r, cy)
+          ctx.arcTo(cx, cy, cx, cy + sy * r, r)
+          ctx.lineTo(cx, v)
+        } else {
+          if (spec.includes('l')) ctx.moveTo(x0, cy), ctx.lineTo(cx, cy)
+          if (spec.includes('r')) ctx.moveTo(spec.includes('l') ? cx : cx, cy), ctx.lineTo(x1, cy)
+          if (spec.includes('u')) ctx.moveTo(cx, y0), ctx.lineTo(cx, cy)
+          if (spec.includes('d')) ctx.moveTo(cx, cy), ctx.lineTo(cx, y1)
+        }
+        ctx.stroke()
+      }
+
+      function colorsOf(attr, d) {
+        let fg = attr.foreground ?? d.fg
+        let bg = attr.background ?? d.bg
+        if (attr.reverse) [fg, bg] = [bg, fg]
+        return { fg: hex(fg), bg: hex(bg), sp: hex(attr.special ?? d.sp) }
+      }
+
+      const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])
+      function setTitle(t) {
+        const [file, ...rest] = t.split(' — ')
+        document.getElementById('title').innerHTML =
+          `<b>${esc(file)}</b>` + (rest.length ? ' — ' + esc(rest.join(' — ')) : '')
+      }
+
+      window.setup = async ({ cols, rows, bg, casting }) => {
+        document.getElementById('stage').classList.toggle('casting', !!casting)
+        await document.fonts.load(`400 ${FONT_SIZE}px Term`)
+        await document.fonts.load(`700 ${FONT_SIZE}px Term`)
+        await document.fonts.load(`italic 400 ${FONT_SIZE}px Term`)
+        await document.fonts.load(`500 13px UI`)
+        ctx.font = font({})
+        cellW = ctx.measureText('M').width
+        const dpr = window.devicePixelRatio
+        canvas.width = Math.round(cols * cellW * dpr)
+        canvas.height = rows * LINE_H * dpr
+        canvas.style.width = canvas.width / dpr + 'px'
+        canvas.style.height = rows * LINE_H + 'px'
+        document.documentElement.style.setProperty('--term-bg', hex(bg))
+      }
+
+      window.draw = (f) => {
+        const dpr = window.devicePixelRatio
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        ctx.textBaseline = 'middle'
+        const d = f.colors
+        ctx.fillStyle = hex(d.bg)
+        ctx.fillRect(0, 0, f.cols * cellW, f.rows * LINE_H)
+
+        // pass 1: backgrounds (snapped to device pixels so runs don't seam)
+        for (let r = 0; r < f.rows; r++) {
+          const row = f.grid[r]
+          for (let c = 0; c < f.cols; c++) {
+            const attr = f.hl[row[c][1]] || {}
+            const { bg } = colorsOf(attr, d)
+            if (bg === hex(d.bg)) continue
+            let e = c + 1
+            while (e < f.cols && colorsOf(f.hl[row[e][1]] || {}, d).bg === bg) e++
+            const x0 = Math.round(c * cellW * dpr) / dpr
+            const x1 = Math.round(e * cellW * dpr) / dpr
+            ctx.fillStyle = bg
+            ctx.fillRect(x0, r * LINE_H, x1 - x0, LINE_H)
+            c = e - 1
+          }
+        }
+
+        // pass 2: glyphs and decorations, one cell at a time on the grid
+        const cur = f.cursor
+        for (let r = 0; r < f.rows; r++) {
+          const row = f.grid[r]
+          for (let c = 0; c < f.cols; c++) {
+            const [text, id] = row[c]
+            if (text === '') continue
+            const attr = f.hl[id] || {}
+            const { fg, sp } = colorsOf(attr, d)
+            const w = isWide(row, c) ? 2 : 1
+            const x = c * cellW
+            const y = r * LINE_H
+            const onCursor =
+              cur.visible && cur.shape === 'block' && cur.row === r && cur.col === c
+            if (onCursor) {
+              ctx.fillStyle = f.cursorColor
+              ctx.fillRect(x, y, cellW * w, LINE_H)
+            }
+            if (BOX[text]) {
+              drawBox(BOX[text], x, y, onCursor ? hex(d.bg) : fg, dpr)
+            } else if (text !== ' ') {
+              ctx.font = font(attr)
+              ctx.fillStyle = onCursor ? hex(d.bg) : fg
+              if (w === 2) {
+                // CJK fallback glyphs are narrower than two cells; size them
+                // up a little, the way terminals fit wide glyphs to the grid
+                ctx.font = font(attr, WIDE_SIZE)
+                ctx.textAlign = 'center'
+                ctx.fillText(text, x + cellW, y + LINE_H / 2 + 0.5, cellW * 2)
+                ctx.textAlign = 'left'
+              } else {
+                ctx.fillText(text, x, y + LINE_H / 2 + 0.5)
+              }
+            }
+            if (attr.underline || attr.undercurl || attr.underdouble || attr.underdashed || attr.underdotted) {
+              const color = attr.special !== undefined ? sp : fg
+              ctx.strokeStyle = color
+              ctx.lineWidth = 1
+              const uy = y + LINE_H - 3.5
+              ctx.beginPath()
+              if (attr.undercurl) {
+                for (let i = 0; i <= cellW * w; i += 1) {
+                  const yy = uy + Math.sin(((x + i) / cellW) * Math.PI * 1.2) * 1.4
+                  i === 0 ? ctx.moveTo(x + i, yy) : ctx.lineTo(x + i, yy)
+                }
+              } else {
+                ctx.moveTo(x, uy)
+                ctx.lineTo(x + cellW * w, uy)
+              }
+              ctx.stroke()
+            }
+            if (attr.strikethrough) {
+              ctx.fillStyle = fg
+              ctx.fillRect(x, y + LINE_H / 2, cellW * w, 1)
+            }
+            if (w === 2) c++
+          }
+        }
+
+        // non-block cursors draw over the glyph
+        if (cur.visible && cur.shape !== 'block') {
+          const pct = Math.max(cur.percentage, 10) / 100
+          ctx.fillStyle = f.cursorColor
+          const x = cur.col * cellW
+          const y = cur.row * LINE_H
+          if (cur.shape === 'vertical') ctx.fillRect(x, y + 1, Math.max(2, cellW * pct), LINE_H - 2)
+          else ctx.fillRect(x, y + LINE_H - Math.max(2, LINE_H * pct), cellW, Math.max(2, LINE_H * pct))
+        }
+
+        setTitle(f.title)
+        const cast = document.getElementById('cast')
+        if (f.cast) {
+          document.getElementById('keys').innerHTML = f.cast.keys.map((k) => `<kbd>${k}</kbd>`).join('')
+          document.getElementById('label').textContent = f.cast.label || ''
+          document.getElementById('label').hidden = !f.cast.label
+          cast.hidden = false
+          cast.style.opacity = f.cast.opacity ?? 1
+        } else {
+          cast.hidden = true
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#: app/billing/views.py:15
+msgid "That plan is no longer available."
+msgstr "더 이상 없는 요금제예요."
+
+#: app/billing/views.py:19
+msgid "Add a card to continue."
+msgstr "계속하려면 카드를 추가하세요."
+
+#: app/billing/views.py:23
+msgid "Welcome to the %(plan)s plan."
+msgstr "이제 %(plan)s 요금제예요."

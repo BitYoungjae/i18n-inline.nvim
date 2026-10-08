@@ -1,0 +1,20 @@
+{
+  "billing": {
+    "plan": {
+      "title": "요금제를 선택하세요",
+      "subtitle": "언제든 해지할 수 있어요.",
+      "perSeat": "좌석당 / 월",
+      "seats": "{{n}}석"
+    },
+    "cta": {
+      "upgrade": "14일 무료 체험 시작"
+    },
+    "invoices": {
+      "empty": "아직 청구서가 없어요",
+      "title": "청구서",
+      "date": "날짜",
+      "amount": "금액",
+      "download": "PDF 다운로드"
+    }
+  }
+}

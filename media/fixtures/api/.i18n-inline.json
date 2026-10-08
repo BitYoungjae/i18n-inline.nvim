@@ -1,0 +1,7 @@
+{
+  "preset": "gettext",
+  "dir": "translations",
+  "languages": ["ko", "ja"],
+  "file_template": "%s/LC_MESSAGES/messages.po",
+  "preview_lang": "ko"
+}

@@ -1,0 +1,21 @@
+{
+  "billing": {
+    "plan": {
+      "title": "Wählen Sie Ihren Tarif",
+      "subtitle": "Jederzeit kündbar.",
+      "perSeat": "pro Platz / Monat",
+      "seats": "{{n}} Plätze"
+    },
+    "cta": {
+      "upgrade": "14 Tage kostenlos testen"
+    },
+    "invoices": {
+      "empty": "Noch keine Rechnungen",
+      "title": "Rechnungen",
+      "date": "Datum",
+      "amount": "Betrag",
+      "status": "Status",
+      "download": "PDF herunterladen"
+    }
+  }
+}

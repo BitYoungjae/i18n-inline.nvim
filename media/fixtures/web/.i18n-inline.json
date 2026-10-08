@@ -1,0 +1,7 @@
+{
+  "preset": "i18next",
+  "dir": "locales",
+  "preview_lang": "en",
+  "source_lang": "en",
+  "normalize": "placeholders"
+}

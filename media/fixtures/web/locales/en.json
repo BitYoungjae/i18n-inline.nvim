@@ -1,0 +1,21 @@
+{
+  "billing": {
+    "plan": {
+      "title": "Choose your plan",
+      "subtitle": "Cancel any time.",
+      "perSeat": "per seat / month",
+      "seats": "{{n}} seats"
+    },
+    "cta": {
+      "upgrade": "Start your 14-day trial"
+    },
+    "invoices": {
+      "empty": "You have no invoices yet",
+      "title": "Invoices",
+      "date": "Date",
+      "amount": "Amount",
+      "status": "Status",
+      "download": "Download PDF"
+    }
+  }
+}
