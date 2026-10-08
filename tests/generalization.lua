@@ -909,6 +909,38 @@ return function(t, eq, ok_, make_project)
     api.nvim_buf_delete(buf, { force = true })
   end)
 
+
+  t('jump E2E: explicit lang argument overrides jump.lang', function()
+    reset_all()
+    local root = make_project({
+      dir = 'tr',
+      preview_lang = 'ko',
+      patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' },
+    }, {
+      ko = { k = '한국어' },
+      en = { k = 'English' },
+    })
+    local buf = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(buf, root .. '/src/x.cljs')
+    api.nvim_buf_set_lines(buf, 0, -1, false, { '(tr [:k "x"])' })
+    vim.bo[buf].filetype = 'clojure'
+    preview.refresh(buf)
+    local win = api.nvim_open_win(buf, true, { relative = 'editor', row = 0, col = 0, width = 60, height = 5 })
+    api.nvim_win_set_cursor(win, { 1, 5 })
+
+    require('i18n-inline.jump').jump({ lang = 'en' })
+    ok_(api.nvim_buf_get_name(0):match('tr/en%.json$') ~= nil, api.nvim_buf_get_name(0))
+
+    -- unknown language: warning, buffer unchanged
+    api.nvim_set_current_buf(buf)
+    api.nvim_win_set_cursor(win, { 1, 5 })
+    require('i18n-inline.jump').jump({ lang = 'xx' })
+    ok_(api.nvim_buf_get_name(0):match('src/x%.cljs$') ~= nil, api.nvim_buf_get_name(0))
+
+    api.nvim_win_close(win, true)
+    api.nvim_buf_delete(buf, { force = true })
+  end)
+
   -- ===== back-compat: cljs-app shape unchanged =====
 
   t('back-compat: default config stays Clojure flat-key', function()

@@ -79,10 +79,21 @@ function M.setup(opts)
   end, { desc = 'i18n: cycle inline display (always/problems/never) for the session' })
 
   api.nvim_create_user_command('I18nJump', function(ev)
-    require('i18n-inline.jump').jump({ bang = ev.bang })
+    require('i18n-inline.jump').jump({ bang = ev.bang, lang = ev.args ~= '' and ev.args or nil })
   end, {
     bang = true,
-    desc = 'i18n: open the translation file at the key under the cursor (! = all languages into quickfix)',
+    nargs = '?',
+    complete = function()
+      local st = require('i18n-inline.preview').state(api.nvim_get_current_buf())
+      local project = st and st.project
+      if not project then
+        return {}
+      end
+      local langs = vim.tbl_keys(project.langs)
+      table.sort(langs)
+      return langs
+    end,
+    desc = 'i18n: open the translation file at the key under the cursor (<lang> = specific language, ! = all languages)',
   })
 
   -- Handle buffers opened before setup() ran (lazy loading)

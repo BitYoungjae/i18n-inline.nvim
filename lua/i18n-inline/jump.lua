@@ -141,7 +141,8 @@ local function jump_quickfix(project, key)
   end
 end
 
----@param opts table|nil { bang = boolean } — bang forces the quickfix variant
+---@param opts table|nil { bang = boolean, lang = string } — bang forces the
+--- quickfix variant; lang overrides jump.lang for this jump (:I18nJump <lang>)
 function M.jump(opts)
   opts = opts or {}
   local buf = api.nvim_get_current_buf()
@@ -167,11 +168,13 @@ function M.jump(opts)
     return
   end
 
-  local lang_mode = jcfg.lang or 'preview'
-  if lang_mode == 'ask' then
+  local lang
+  if opts.lang then
+    lang = opts.lang
+  elseif jcfg.lang == 'ask' then
     local langs = {}
-    for lang in pairs(project.langs) do
-      langs[#langs + 1] = lang
+    for l in pairs(project.langs) do
+      langs[#langs + 1] = l
     end
     table.sort(langs, function(a, b)
       if a == cfg.preview_lang then
@@ -188,11 +191,12 @@ function M.jump(opts)
       end
     end)
     return
+  else
+    lang = jcfg.lang == 'source' and cfg.source_lang or cfg.preview_lang
   end
-
-  local lang = lang_mode == 'source' and cfg.source_lang or cfg.preview_lang
   if not lang or not project.langs[lang] then
-    notify(('no translation file for jump.lang=%s'):format(tostring(lang)), vim.log.levels.WARN)
+    notify(('no translation file for "%s" (available: %s)')
+      :format(tostring(lang), table.concat(vim.tbl_keys(project.langs), ', ')), vim.log.levels.WARN)
     return
   end
   jump_lang(project, lang, m.key, open)

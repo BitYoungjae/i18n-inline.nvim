@@ -72,7 +72,7 @@ mappings. Every action is reachable without any mapping:
 
 - `:I18nHover` / `<Plug>(i18n-inline-hover)`
 - `:I18nToggle` / `<Plug>(i18n-inline-toggle)`
-- `:I18nJump` / `<Plug>(i18n-inline-jump)` (`:I18nJump!` = all languages)
+- `:I18nJump [lang]` / `<Plug>(i18n-inline-jump)` (`!` = all languages)
 - `:I18nCheck`
 
 To opt into keymaps, either set them yourself:
@@ -271,7 +271,9 @@ groups.
 - The hover mapping inside a call (or on its key) opens the language
   popover; it closes when the cursor moves.
 - The jump mapping (`:I18nJump`) opens the preview language's file on the
-  key's line, briefly highlighted. When the key is missing there but exists
+  key's line, briefly highlighted. `:I18nJump <lang>` targets one language
+  for this jump (`:I18nJump en`, tab-completed); `"jump": {"lang": "ask"}`
+  asks every time instead. When the key is missing in the target but exists
   in `source_lang`, the source file opens with a warning instead.
   `:I18nJump!` loads every language's occurrence into the quickfix for
   walking them with `:cnext`.
