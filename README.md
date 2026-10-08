@@ -1,5 +1,7 @@
 # i18n-inline.nvim
 
+[![test](https://github.com/BitYoungjae/i18n-inline.nvim/actions/workflows/test.yml/badge.svg)](https://github.com/BitYoungjae/i18n-inline.nvim/actions/workflows/test.yml)
+
 See the real translation next to every `t('key')` while you edit, and catch
 the places where your code and your translation files disagree.
 
