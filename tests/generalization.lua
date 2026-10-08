@@ -96,11 +96,112 @@ return function(t, eq, ok_, make_project)
     })
   end)
 
-  t('formats: for_path picks json/po by extension, format config wins', function()
+  t('formats: for_path picks json/po/arb by extension, format config wins', function()
     ok_(formats.for_path('a/b/ko.json', {}) == formats.registry.json)
     ok_(formats.for_path('a/b/ko.po', {}) == formats.registry.po)
+    ok_(formats.for_path('app_en.arb', {}) == formats.registry.arb)
     ok_(formats.for_path('a/b/ko.json', { format = 'po' }) == formats.registry.po)
     ok_(formats.for_path('a/b/ko.yaml', {}) == nil)
+  end)
+
+  t('formats: arb decodes as JSON minus @metadata entries', function()
+    local raw = vim.json.encode({
+      ['@@locale'] = 'en',
+      ['@greeting'] = { description = 'main greeting', placeholders = {} },
+      greeting = 'Hello',
+      bye = 'Goodbye',
+    })
+    local out = formats.registry.arb.decode(raw, { key_style = 'flat' })
+    eq(out, { greeting = 'Hello', bye = 'Goodbye' })
+  end)
+
+  -- ===== Flutter / identifier-style accessors (no string literals) =====
+
+  t('scan: fallback_style=none never grabs the next literal (Tr().key)', function()
+    local src = "Text(Tr().confirm_delete, '{{count}} items');"
+    local ms = scan.scan(src, {
+      patterns = { '%f[%w]Tr%(%)%s*%.([%w_]+)' },
+      fallback_style = 'none',
+    })
+    eq(#ms, 1)
+    eq(ms[1].key, 'confirm_delete')
+    eq(ms[1].fb, nil)
+    -- without 'none', the next-literal heuristic grabs the adjacent string
+    -- and would fabricate drift against the translation value
+    local ms2 = scan.scan(src, { patterns = { '%f[%w]Tr%(%)%s*%.([%w_]+)' } })
+    eq(ms2[1].fb, '{{count}} items')
+  end)
+
+  t('scan: frontier-anchored Tr() rejects suffixed identifiers', function()
+    local src = 'final x = ATrialBannerRun(); final y = Tr().ok_key;'
+    local ms = scan.scan(src, { patterns = { '%f[%w]Tr%(%)%s*%.([%w_]+)' }, fallback_style = 'none' })
+    local keys = {}
+    for _, m in ipairs(ms) do
+      keys[#keys + 1] = m.key
+    end
+    eq(keys, { 'ok_key' })
+  end)
+
+  t('config: flutter preset expands with identifier defaults', function()
+    reset_all()
+    local merged, err = config.merge_project({
+      preset = 'flutter',
+      dir = 'lib/l10n',
+      languages = { 'en', 'ko' },
+      file_template = 'app_%s.arb',
+      preview_lang = 'ko',
+    })
+    ok_(merged ~= nil, err)
+    eq(merged.filetypes, { 'dart' })
+    eq(merged.fallback_style, 'none')
+    eq(merged.key_style, 'flat')
+    ok_(vim.tbl_contains(merged.patterns, 'l10n%.([%w_]+)'))
+    eq(merged.check.extensions, { 'dart' })
+  end)
+
+  t('preview E2E: Dart Tr() project renders value previews (no fallback)', function()
+    reset_all()
+    local root = make_project({
+      dir = 'tr',
+      preview_lang = 'ko',
+      source_lang = 'ko',
+      filetypes = { 'dart' },
+      patterns = { '%f[%w]Tr%(%)%s*%.([%w_]+)' },
+      fallback_style = 'none',
+      check = { extensions = { 'dart' } },
+    }, {
+      ko = { add_barcode_cost_price = '구매가' },
+    })
+    local buf = api.nvim_create_buf(true, false)
+    api.nvim_buf_set_name(buf, root .. '/lib/pages/add_barcode.dart')
+    api.nvim_buf_set_lines(buf, 0, -1, false, {
+      "DisplayHolder(title: Tr().add_barcode_cost_price, value: '{{cost}}'),",
+      'Text(Tr().not_in_json),',
+      'final x = SomeTr().not_a_key;',
+    })
+    vim.bo[buf].filetype = 'dart'
+    preview.refresh(buf)
+
+    local st = preview.state(buf)
+    ok_(st and st.matches, 'no state')
+    eq(#st.matches, 2)
+    eq(st.matches[1].key, 'add_barcode_cost_price')
+    eq(st.matches[1].status, 'novalue')
+    eq(st.matches[1].value, '구매가')
+    eq(st.matches[1].fb, nil)
+    eq(st.matches[2].status, 'missing')
+
+    local ns = api.nvim_get_namespaces()['i18n_inline']
+    local virt = {}
+    for _, mk in ipairs(api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+      if mk[4].virt_text then
+        virt[#virt + 1] = mk[4].virt_text[1][1]
+      end
+    end
+    eq(#virt, 2)
+    eq(virt[1], '  구매가')
+    ok_(virt[2]:match('key not found'), virt[2])
+    api.nvim_buf_delete(buf, { force = true })
   end)
 
   -- ===== R1.3 namespace composition + R3.2 aliases =====

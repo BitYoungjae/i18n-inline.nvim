@@ -104,6 +104,17 @@ Key decisions (generalization round, settling REQUIREMENTS' open questions):
   note the preset layer must be rebuilt from the merged user options, never
   stacked onto an already-defaulted table). Recipes in the README complement
   them.
+- **Identifier-style accessors are 1-capture patterns + `fallback_style:
+  'none'`** (Flutter round). Generated classes (a codegen'd `Tr().snake_key`
+  codegen class, gen-l10n `AppLocalizations.of(context)!.key`) carry the
+  key in an identifier, not a string literal. The 1-capture contract already
+  covers them (the capture is just an identifier), but the next-literal
+  fallback heuristic must be off: `Text(Tr().key, '{{count}}')` would
+  otherwise grab `'{{count}}'` and fabricate drift. Dart has no dynamic
+  member access, so these projects have zero dynamic-key caveats — the
+  cleanest extraction class the plugin supports. `.arb` decodes as JSON
+  minus `@`/`@@` metadata entries; gen-l10n's `app_<lang>.arb` naming needs
+  `file_template` + explicit `languages` (discovery takes the file stem).
 - **No coupling to external CLI config (Q5).** next-app's `i18n-check`
   ignore list is copied into `.i18n-inline.json` manually; reading
   package.json script args would couple the plugin to one tool's argv shape.
@@ -164,6 +175,7 @@ unless noted:
 | `vim.json.decode` + flatten of one next-intl message file (244 keys) | ~0.2 ms (cached afterwards) |
 | Full-repository scan (patterns + literal parsing + classification) | ~130 ms |
 | next-app full scan (295 files, receiver patterns + binding pre-pass + nested flatten) | ~70 ms (~0.26 ms/file avg; slowest 40 KB data file ~3 ms) |
+| dart-app full scan (852 Dart files, `Tr().key` accessor pattern, flat JSON; 2,964 calls, 100% resolve, 0 false missing) | ~60 ms (~0.07 ms/file) |
 | Binding pre-pass, const-anchored (worst 40 KB file) | ~0.15 ms/pattern (vs ~2 ms before anchoring) |
 | Single typical buffer scan + extmark render | ~1 ms |
 
@@ -180,6 +192,7 @@ by run.lua) covers the generalization surface: nested flattening and the
 collision policy, PO parsing, namespace composition (both presets), alias
 filtering, backtick/bounded fallbacks, prop fallbacks, placeholder
 normalization, preset expansion and array-replacement merge semantics,
-project-file keymaps, the display-mode cycle, source-language gaps, and
-ignore globs. Set `I18N_SMOKE_REPO` to also scan a real ClojureScript
-repository and assert sane totals.
+project-file keymaps, the display-mode cycle, source-language gaps, ignore
+globs, and Flutter identifier accessors (arb decoding, fallback none).
+Set `I18N_SMOKE_REPO` to also scan a real ClojureScript repository and
+assert sane totals.

@@ -129,8 +129,25 @@ local function decode_po(raw, _cfg)
   return out
 end
 
+-- Flutter ARB: JSON with metadata entries (`@@locale`, `@key` descriptors)
+-- alongside the real messages. Drop the metadata; messages are flat
+-- (gen-l10n getter names are the keys).
+local function decode_arb(raw, cfg)
+  local out, err = decode_json(raw, cfg)
+  if not out then
+    return nil, err
+  end
+  for k in pairs(out) do
+    if k:sub(1, 1) == '@' then
+      out[k] = nil
+    end
+  end
+  return out
+end
+
 local registry = {
   json = { decode = decode_json, extensions = { 'json' } },
+  arb = { decode = decode_arb, extensions = { 'arb' } },
   po = { decode = decode_po, extensions = { 'po' } },
 }
 

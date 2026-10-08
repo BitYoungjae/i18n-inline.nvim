@@ -44,8 +44,8 @@ custom Lua pattern can describe.
 ## Requirements
 
 - Neovim 0.10 or later.
-- No plugin dependencies. Translation files: JSON (flat or nested) and
-  gettext `.po`.
+- No plugin dependencies. Translation files: JSON (flat or nested), Flutter
+  `.arb`, and gettext `.po`.
 
 ## Installation
 
@@ -123,6 +123,7 @@ are alternative sets, not accumulations.
 | `next-intl` | `const t = useTranslations('ns')` / `await getTranslations('ns')`, nested dot keys, no code fallback |
 | `i18next` | `const { t } = useTranslation('ns')`, `t('ns.key')`, `i18n.t`, `t.raw`, nested dot keys |
 | `vue-i18n` | `$t('key')`, `this.$t('key')` in templates and script, nested dot keys |
+| `flutter` | gen-l10n accessors — `AppLocalizations.of(context)!.key`, `context.l10n.key`; flat `.arb` keys (metadata `@` entries stripped) |
 | `gettext` | `_('text')`, `t('text')`, `__('key')` where the msgid is the key; `.po` files; comparison off |
 
 Presets set `filetypes`, `patterns`, `namespace_patterns`, `aliases`,
@@ -137,7 +138,7 @@ Presets set `filetypes`, `patterns`, `namespace_patterns`, `aliases`,
 | `dir` | `nil` | translation directory; absolute, or relative to the project root (discovered upward from the buffer) |
 | `languages` | `nil` | language list; nil discovers translation files in `dir` (`ko.json`/`ko.po` → `"ko"`) |
 | `file_template` | `nil` | language → file template, e.g. `'locales/%s.json'`; requires `languages` |
-| `format` | `nil` | `'json'` \| `'po'`; nil auto-detects by extension |
+| `format` | `nil` | `'json'` \| `'arb'` \| `'po'`; nil auto-detects by extension |
 | `key_style` | `'flat'` | `'nested'` flattens hierarchical files into separator-joined paths (`Invoice.amount` ← `{"Invoice": {"amount": …}}`) |
 | `separator` | `'.'` | path separator for flattening and namespace composition (e.g. `':'` for `ns:key` schemes) |
 | `preview_lang` | `'ko'` | language shown inline |
@@ -146,7 +147,7 @@ Presets set `filetypes`, `patterns`, `namespace_patterns`, `aliases`,
 | `patterns` | see below | extraction patterns (capture contract below) |
 | `namespace_patterns` | `{}` | namespace binding patterns (see below) |
 | `aliases` | `nil` | allowed call receivers for receiver-capturing patterns; `'*'` allows any |
-| `fallback_style` | `'literal'` | `'literal'` = next string literal; `'prop'` = `fallback_props` property (`defineMessages` …) |
+| `fallback_style` | `'literal'` | `'literal'` = next string literal; `'prop'` = `fallback_props` property; `'none'` = no fallback (identifier-style calls) |
 | `fallback_props` | `{'defaultMessage'}` | property names for `fallback_style: 'prop'` |
 | `compare` | `'fallback'` | `'none'` disables the fallback-vs-file comparison (gettext / no-fallback stacks) |
 | `normalize` | `'none'` | `'placeholders'` treats `{n}`, `{{n}}`, `%s` … as equal placeholders when comparing |
@@ -166,6 +167,28 @@ Presets set `filetypes`, `patterns`, `namespace_patterns`, `aliases`,
 | `check.extensions` | `{'cljs','cljc','clj'}` | file extensions `:I18nCheck` walks |
 | `check.exclude_dirs` | `{'.git','node_modules',…}` | directories the audit skips |
 | `check.ignore` | `{}` | globs for keys excluded from unused detection (`"templateVar.*"`) |
+
+Generated-accessor stacks need no preset when the accessor form is stable —
+a 1-capture pattern over the accessor is enough. For a codegen'd class with
+string-keyed lookups (e.g. a `Tr().snake_case_key` codegen class over flat
+JSON in `assets/lang/`):
+
+```json
+{
+  "dir": "assets/lang",
+  "preview_lang": "ko",
+  "source_lang": "ko",
+  "filetypes": ["dart"],
+  "patterns": ["%f[%w]Tr%(%)%s*%.([%w_]+)"],
+  "fallback_style": "none",
+}
+```
+
+`fallback_style: "none"` matters for identifier-style calls: there is no
+string literal after the key, and the next-literal heuristic would otherwise
+grab an adjacent widget argument (e.g. `value: '{{cost}}'`) and fabricate
+drift. Dart cannot reach members dynamically, so these projects have no
+dynamic-key caveats at all.
 
 ### The pattern contract
 
@@ -258,8 +281,9 @@ draws on top) or toggle inline display off with `:I18nToggle`.
 
 - One Lua-pattern pass per buffer on change; measured on real repositories:
   cljs-app (ClojureScript, 1,067 files, 4,518 calls) audits in ~130 ms;
-  next-app (next-intl, 257 files incl. a namespace-binding pre-pass)
-  in ~70 ms; typical single buffers scan in well under a millisecond, the
+  next-app (next-intl, ~300 files incl. a namespace-binding pre-pass)
+  in ~70 ms; dart-app (Flutter, 852 Dart files, 2,964 accessor calls) in
+  ~60 ms; typical single buffers scan in well under a millisecond, the
   slowest 40 KB data file in ~3 ms.
 - Translation files are decoded once and cached, keyed by mtime and size;
   nested JSON is flattened at decode time, so every lookup stays a flat
@@ -279,7 +303,7 @@ draws on top) or toggle inline display off with `:I18nToggle`.
   ignore entries.
 - Structured extraction (tree-sitter) is not implemented; the next-literal
   fallback heuristic handles `defineMessages` via `fallback_style: 'prop'`.
-- Formats beyond JSON and `.po` (YAML, `.arb`, `.properties`) are not
+- Formats beyond JSON, `.arb` and `.po` (YAML, `.properties`, XML) are not
   shipped; `formats.lua` documents the one-function decoder interface to add
   one. PO entries with `msgctxt` are skipped (ambiguous to address from
   code).

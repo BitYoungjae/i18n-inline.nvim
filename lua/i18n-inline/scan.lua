@@ -27,6 +27,9 @@
 --   'prop'    — structured catalogs: search forward for one of
 --               `cfg.fallback_props` (`propName: "…"`) within the same
 --               bounded region (defineMessages defaultMessage, …).
+--   'none'    — no fallback. For identifier-style calls (Flutter's
+--               `Tr().key`, gen-l10n accessors) the next string literal is
+--               unrelated code, and grabbing it would fabricate drift.
 --
 -- Match (byte offsets are 1-based):
 --   {
@@ -215,12 +218,14 @@ function M.scan(text, cfg)
 
   -- Fallback extraction, each bounded by the next match's start so one
   -- call can never swallow the next call's key literal.
-  for i, m in ipairs(matches) do
-    local bound = (i < #matches and matches[i + 1].call_s or #text + 1) - 1
-    if cfg.fallback_style == 'prop' then
-      fallback_prop(text, m, bound, cfg.fallback_props)
-    else
-      fallback_literal(text, m, bound)
+  if cfg.fallback_style ~= 'none' then
+    for i, m in ipairs(matches) do
+      local bound = (i < #matches and matches[i + 1].call_s or #text + 1) - 1
+      if cfg.fallback_style == 'prop' then
+        fallback_prop(text, m, bound, cfg.fallback_props)
+      else
+        fallback_literal(text, m, bound)
+      end
     end
   end
   return matches

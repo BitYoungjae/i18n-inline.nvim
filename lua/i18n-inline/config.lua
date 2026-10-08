@@ -64,7 +64,9 @@ local defaults = {
   -- is neither namespace-bound nor aliased is dropped. '*' allows any.
   aliases = nil,
   -- Fallback extraction: 'literal' = next string literal after the key;
-  -- 'prop' = `fallback_props` property (defineMessages defaultMessage, …).
+  -- 'prop' = `fallback_props` property (defineMessages defaultMessage, …);
+  -- 'none' = no fallback (identifier-style calls like Flutter's Tr().key,
+  -- where the next string literal is unrelated code).
   fallback_style = 'literal',
   fallback_props = { 'defaultMessage' },
   -- Drift definition (R2): 'fallback' compares the code fallback against
@@ -169,8 +171,8 @@ local function validate(cfg)
   if not one_of(cfg.normalize, { 'none', 'placeholders' }) then
     return 'normalize must be "none" or "placeholders"'
   end
-  if not one_of(cfg.fallback_style, { 'literal', 'prop' }) then
-    return 'fallback_style must be "literal" or "prop"'
+  if not one_of(cfg.fallback_style, { 'literal', 'prop', 'none' }) then
+    return 'fallback_style must be "literal", "prop" or "none"'
   end
   if not one_of(cfg.show, { 'always', 'problems', 'never' }) then
     return 'show must be "always", "problems" or "never"'

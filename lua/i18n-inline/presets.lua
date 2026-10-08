@@ -76,6 +76,30 @@ M.presets = {
     },
   },
 
+  -- Flutter gen-l10n: identifier accessors, no string literals anywhere.
+  -- Keys are the getter names, flat in .arb files (metadata `@` entries
+  -- stripped by the arb decoder). gen-l10n names files app_<lang>.arb, so
+  -- point the project file at them with file_template + languages:
+  --   { "dir": "lib/l10n", "languages": ["en", "ko"],
+  --     "file_template": "app_%s.arb", "preview_lang": "ko" }
+  -- Codegen'd accessor classes with string-keyed lookups (e.g. a
+  -- `Tr().snake_case_key` codegen class over plain JSON) need no preset —
+  -- a 1-capture pattern on the accessor form is enough; see README.
+  flutter = {
+    filetypes = { 'dart' },
+    patterns = {
+      'AppLocalizations%.of%([^)]*%)%!?%.([%w_]+)', -- AppLocalizations.of(context)!.key
+      'l10n%.([%w_]+)', -- context.l10n.key / <var>.l10n.key
+    },
+    key_style = 'flat',
+    fallback_style = 'none',
+    namespace_patterns = {},
+    check = {
+      extensions = { 'dart' },
+      exclude_dirs = { '.git', '.dart_tool', 'build', 'ios', 'android' },
+    },
+  },
+
   -- gettext convention: the msgid (source text) is the key and IS the code
   -- literal, so there is nothing to compare against the msgstr — value
   -- preview and missing/untranslated detection only.
