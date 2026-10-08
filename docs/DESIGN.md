@@ -30,20 +30,30 @@ and what this implementation settled on, summarized below.
 ## Architecture
 
 ```
-config.lua    defaults + setup() + preset expansion + project-file merge/validate
-presets.lua   framework preset tables (next-intl, i18next, vue-i18n, gettext)
-formats.lua   format registry: decode(raw, cfg) -> FLAT key->value map (json, po)
-resolve.lua   project discovery (walk-up), per-project cfg, mtime+size file cache
+plugin/       commands, <Plug> mappings, highlight-group defaults (no setup
+              needed); init.lua: setup() = config + rendering autocmds
+config.lua    defaults + setup() + preset expansion + project-file merge;
+              schema-driven validation and unknown-key detection
+presets.lua   framework preset tables (next-intl, i18next, vue-i18n, flutter,
+              gettext)
+formats.lua   format registry: decode(raw, cfg) -> FLAT key->STRING map
+              (json, arb, po); find_line(lines, key) -> lnum, col, len
+resolve.lua   project discovery (walk-up), per-project cfg, mtime+size file
+              cache, language ordering (sorted_langs) and lookup (value)
 scan.lua      pattern scan (arity-dispatched), namespace bindings, fallback
               extraction, placeholder normalization, status classification
 preview.lua   per-buffer state, debounced refresh, extmark rendering, display
-              toggle, match lookup (shared by hover/jump), per-buffer keymaps
-hover.lua     per-language popover (own float, close-on-move autocmds, bounds)
+              toggle, cursor-aware match lookup + on-demand re-scan
+              (current_match, shared by hover/jump), per-buffer keymaps
+hover.lua     per-language popover (own float, single instance, close-on-move)
 jump.lua      :I18nJump — open the translation file at the key under the
               cursor (per-format line location via formats.find_line)
 check.lua     project-wide audit -> quickfix, batched; source-lang gaps,
               ignore globs, namespace-aware unused detection
-health.lua    :checkhealth — project, formats, sample resolution rate
+health.lua    :checkhealth — project, formats, unknown keys, sample
+              resolution rate over an evenly spread file sample
+util.lua      notify, paths, file reading, source-tree walk, offsets,
+              truncation/quoting for display
 ```
 
 Key decisions (original round):
@@ -149,6 +159,86 @@ Key decisions (generalization round, settling REQUIREMENTS' open questions):
   claims `gK` buffer-locally at LspAttach time, invisibly to startup keymap
   scans — suggested mappings are `<leader>ii` / `<leader>ui`.
 
+Key decisions (review pass, 2026-10-09). Every item started as a defect
+reproduced by a script before fixing; `tests/regressions.lua` pins each
+one, and each of those tests fails against the pre-review code. The scan
+output over the three reference repositories (7,849 calls) is
+byte-identical before and after.
+
+- **Decoders return string-valued maps.** Numbers/booleans are stringified,
+  JSON `null` and (flat mode) nested objects are dropped. Before, every
+  consumer re-checked `vim.NIL`, and a flat read of nested JSON rendered
+  `table: 0x…` inline. Now `keys[key]` is a string or nil everywhere.
+- **A relative `dir` resolves against the project file's directory.**
+  Walking up from the buffer let a nearer same-named directory
+  (`src/components/messages/` vs `messages/`) hijack the project — and since
+  projects are cached by root, whichever buffer opened first decided it for
+  all. Walk-up remains only for setup-only configs (no project file), and
+  then requires a directory, not any file with that name.
+- **`languages` filters discovery** (it was ignored without
+  `file_template`).
+- **Cursor-aware match lookup.** `match_at(buf, row, col)` picks the call
+  containing the cursor, else the nearest on the row; it used to return the
+  first call on the line, making the second `t()` in `{t('a')} {t('b')}`
+  unreachable for hover and jump.
+- **On-demand re-scan for actions.** `preview.current_match()` re-scans
+  when `changedtick` moved since the last render (edits inside the
+  debounce window, insert-mode edits) or the buffer was never scanned —
+  which is also what makes the commands work without `setup()`.
+- **One popover at a time.** The hover augroup is recreated (`clear =
+  true`) per popover, so a second hover deleted the first popover's
+  close-on-move autocmds and leaked its window.
+- **Popover mismatch = inline status.** The popover compared raw strings
+  and ignored `normalize`/non-string values; it now reuses `m.status`.
+- **Keymap signature resets with the keymaps.** `clear()` deleted the
+  buffer-local maps but kept the signature, so a buffer that left and
+  re-entered a project (filetype flip, transiently invalid project file)
+  never got them back.
+- **Saved-file paths come from the buffer name.** `<afile>` is relative
+  when the file was opened relatively (`:e messages/ko.json`), so saving a
+  translation file never refreshed other buffers. Saving a new
+  translation-format file in a project's `dir` re-discovers languages.
+- **Preset fixes.** Flutter's `l10n.key` pattern gained frontiers so
+  `import '…/l10n/l10n.dart'` (the Very Good CLI layout) no longer reads as
+  key `dart`; gettext uses one pattern per quote style, because msgids are
+  source text and `"Don't panic"` stopped at the apostrophe.
+- **Schema-driven validation.** Type errors (`position`, numbers, strings)
+  used to pass validation and then fail on every render; empty lists were
+  rejected for options that legitimately clear a preset
+  (`namespace_patterns: []`). Unknown keys are reported, not fatal, so an
+  older plugin still reads a newer project file.
+- **Health samples evenly.** The first 25 files of a depth-first walk all
+  came from the first directories — on cljs-app that was 0 calls of
+  4,518, a false "patterns matched nothing" warning. The sample is now
+  spread over the sorted file list (walk capped at 5,000 files).
+- **Plugin-owned highlight groups** (`I18nInline*`, default links,
+  re-applied on `ColorScheme`) so colorschemes can target them by name.
+- **The jump flash is a buffer extmark.** It was a `matchaddpos` match,
+  which belongs to the window: `<C-o>` within the 800 ms flash painted it
+  over the code buffer at the translation file's line and column. Found
+  while recording the README GIFs.
+- **Health parses every language file**, not only preview and source, and
+  parse failures carry the decoder's message: decoders return
+  `(nil, msg)`, which the `pcall` wrapper used to drop (`"…: empty
+  table"`). Both came out of trial runs of the README's agent setup prompt
+  against the three reference repos. In a headless run (no UI attached)
+  the audit's report lines go to `:messages` and list every unused key, so
+  CI or an agent can capture them; with a UI they stay out of the history,
+  which would turn consecutive lines into a hit-enter prompt.
+
+### README media
+
+The README images are recorded, not drawn: `media/render.mjs` runs
+`nvim --embed` with a small config (tokyonight, lualine, tree-sitter),
+attaches as a linegrid UI over msgpack-RPC, and paints the composed grid
+(floats included, `ext_multigrid` off) on a canvas in headless Chromium.
+Box-drawing characters are painted on the cell grid rather than taken from
+the font, as GPU terminals do; font glyphs leave gaps and offsets at a
+22 px line height. Frames carry scripted durations, so the GIF timing does
+not depend on machine speed; `wait()` lets real timers (the jump flash)
+expire before the next frame. Fixtures are copied under a temporary `$HOME`
+so every printed path reads `~/orbit/...`.
+
 ## Neovim API findings (0.12.5)
 
 Beware when touching these areas:
@@ -179,6 +269,27 @@ Beware when touching these areas:
   the test suite must run under `--headless -u NORC`.
 - Buffer 0 (current-buffer pseudo-id) and real buffer numbers must not be
   mixed as state keys; `preview.lua` normalizes at every entry point.
+- `:tab {file}` is not "open in a tab": `:tab` takes a *command*, so
+  `:tab /path/x.json` runs `:/path…` as a search (E486). Use `:tabedit`.
+- In autocmds, `ev.file` (`<afile>`) is the name as the user typed it —
+  relative when opened relatively. Use `nvim_buf_get_name(ev.buf)` for an
+  absolute path.
+- A Lua `complete` function for a user command behaves like `customlist`:
+  Neovim does not filter by the typed prefix — the function must.
+- `vim.fn.expand()` on a file path interprets `%`, `#` and `<cfile>`;
+  normalize paths with `vim.fs.normalize` + `fnamemodify(':p')` instead.
+- `vim.tbl_deep_extend('force')`: an empty table over a list replaces it
+  (so `"aliases": []` clears a preset's list), while an empty table over a
+  dict merges (a no-op). `vim.json.decode` keeps the distinction: `{}` is a
+  `vim.empty_dict()` (not `islist`), `[]` an empty list.
+- `nvim_open_win` rejects `title` when the border is `'none'`; omit the
+  title in that case (relevant once `'winborder'` is honored).
+- `matchaddpos()` highlights belong to the *window*: they stay when the
+  window switches to another buffer. Use buffer extmarks for anything tied
+  to a buffer position.
+- With `nvim --embed`, a float that does not fit below the cursor is moved
+  up and may cover the cursor row; the UI then reported mode `replace` for
+  the cursor shape in one case. Give floats room in recordings.
 
 ## Performance measurements
 
@@ -213,5 +324,9 @@ project-file keymaps, the display-mode cycle, source-language gaps, ignore
 globs, Flutter identifier accessors (arb decoding, fallback none), and jump
 line-location (flat/nested/literal-dot/minified JSON, PO, E2E jump with
 missing→source fallback, quickfix variant, ask mode).
+`tests/regressions.lua` (also loaded by run.lua) holds one test per defect
+fixed in the review pass, including the autocmd wiring (relative-name
+saves, new language files) and the plugin file (commands without
+`setup()`, completion filtering).
 Set `I18N_SMOKE_REPO` to also scan a real ClojureScript repository and
 assert sane totals.
