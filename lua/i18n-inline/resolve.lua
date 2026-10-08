@@ -1,4 +1,4 @@
--- Project discovery, per-project config, and translation JSON caching.
+-- Project discovery, per-project config, and translation file caching.
 --
 -- A "project" is either:
 --   - a directory tree containing the project config file (`.i18n-inline.json`),
@@ -10,6 +10,7 @@
 
 local uv = vim.uv
 local config = require('i18n-inline.config')
+local formats = require('i18n-inline.formats')
 
 local M = {}
 
@@ -59,7 +60,7 @@ local function find_upward(base, rel)
   return nil
 end
 
--- Discover languages from `*.json` files in dir (ko.json -> "ko").
+-- Discover languages from translation files in dir (ko.json / ko.po -> "ko").
 local function discover_langs(dir)
   local langs = {}
   local fs = uv.fs_scandir(dir)
@@ -67,13 +68,16 @@ local function discover_langs(dir)
     return langs
   end
   while true do
-    local name = uv.fs_scandir_next(fs)
+    local name, ftype = uv.fs_scandir_next(fs)
     if not name then
       break
     end
-    local lang = name:match('^(.+)%.json$')
-    if lang and lang ~= '' then
-      langs[lang] = normalize(dir .. '/' .. name)
+    if ftype == 'file' then
+      local lang = name:match('^(.+)%.[%w]+$')
+      -- only extensions a registered format claims (json, po, …)
+      if lang and lang ~= '' and formats.for_path(name, {}) then
+        langs[lang] = normalize(dir .. '/' .. name)
+      end
     end
   end
   return langs
@@ -215,7 +219,9 @@ function M.project_having_file(path)
   return nil
 end
 
--- Load a language's key table (cached by mtime+size). Returns keys | nil, err.
+-- Load a language's key table (cached by mtime+size). The key table is the
+-- format decoder's output: always a flat key -> value map (nested JSON is
+-- flattened at decode time). Returns keys | nil, err.
 function M.ensure_lang(project, lang)
   local path = project.langs[lang]
   if not path then
@@ -234,6 +240,15 @@ function M.ensure_lang(project, lang)
     return cached.cfg
   end
 
+  local fmt = formats.for_path(path, project.cfg)
+  if not fmt then
+    local ext = path:match('%.([%w]+)$') or '(none)'
+    local err = ('no parser for .%s files: %s (set "format" or use %s)')
+      :format(ext, path, table.concat(formats.names(), '/'))
+    file_cache[path] = { sig = sig, err = err }
+    return nil, err
+  end
+
   local fh = io.open(path, 'r')
   if not fh then
     local err = ('cannot open translation file: %s'):format(path)
@@ -244,9 +259,9 @@ function M.ensure_lang(project, lang)
   fh:close()
   raw = raw:gsub('^\239\187\191', '') -- strip BOM
 
-  local ok, keys = pcall(vim.json.decode, raw)
+  local ok, keys = pcall(fmt.decode, raw, project.cfg)
   if not ok or type(keys) ~= 'table' then
-    local err = ('failed to parse JSON: %s'):format(path)
+    local err = ('failed to parse %s: %s'):format(path, ok and (keys or 'empty table') or keys)
     file_cache[path] = { sig = sig, err = err }
     return nil, err
   end

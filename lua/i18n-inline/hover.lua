@@ -1,4 +1,8 @@
 -- Language popover: show every language's value for the key under the cursor.
+--
+-- Readability at scale (R6.6): stable language-column alignment, values
+-- truncated per line, window width/height bounded (long content wraps rather
+-- than growing the popover without limit).
 
 local api = vim.api
 local preview = require('i18n-inline.preview')
@@ -36,8 +40,10 @@ function M.hover()
     return
   end
   local cfg = project.cfg
+  local hcfg = cfg.hover or {}
 
-  -- Language order: preview language first, then alphabetical.
+  -- Language order: preview language first, then source language, then
+  -- alphabetical.
   local langs = {}
   for lang in pairs(project.langs) do
     langs[#langs + 1] = lang
@@ -49,6 +55,12 @@ function M.hover()
     if b == cfg.preview_lang then
       return false
     end
+    if cfg.source_lang and a == cfg.source_lang then
+      return true
+    end
+    if cfg.source_lang and b == cfg.source_lang then
+      return false
+    end
     return a < b
   end)
 
@@ -57,6 +69,7 @@ function M.hover()
     pad = math.max(pad, api.nvim_strwidth(lang))
   end
 
+  local max_len = hcfg.max_len or 60
   local lines = {}
   local line_meta = {} -- per-line highlight info
 
@@ -75,12 +88,13 @@ function M.hover()
     if value == vim.NIL then
       value = nil
     end
-    local display = value ~= nil and util.display_value(value) or '(missing)'
+    local display = value ~= nil and util.truncate(util.display_value(value), max_len) or '(missing)'
     -- Only the preview language is expected to mirror the code fallback;
     -- other languages are translations, so differing there is not drift.
     local mismatch = lang == cfg.preview_lang
       and m.fb ~= nil
       and value ~= nil
+      and cfg.compare ~= 'none'
       and m.fb ~= value
     local label = lang .. (' '):rep(pad - api.nvim_strwidth(lang)) .. '  '
     lines[#lines + 1] = label .. display
@@ -94,7 +108,7 @@ function M.hover()
   for _, l in ipairs(lines) do
     width = math.max(width, api.nvim_strwidth(l))
   end
-  width = math.max(20, math.min(width, 80))
+  width = math.max(20, math.min(width, hcfg.width or 60))
 
   local fbuf = api.nvim_create_buf(false, true)
   api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
@@ -106,7 +120,7 @@ function M.hover()
     row = 1,
     col = 0,
     width = width,
-    height = math.min(#lines, 20),
+    height = math.min(#lines, hcfg.max_height or 20),
     style = 'minimal',
     border = 'rounded',
     title = ' ' .. util.truncate(m.key, 40) .. ' ',

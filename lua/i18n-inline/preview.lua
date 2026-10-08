@@ -3,6 +3,11 @@
 --
 -- Per-buffer state: { project, matches, virt_ids, hl_ids, timer }
 -- Each match extends the scan result with row/col positions and status/value.
+--
+-- Inline display mode is runtime-toggleable (:I18nToggle,
+-- <Plug>(i18n-inline-toggle)): it cycles 'always' -> 'problems' -> 'never'
+-- for the session, starting from the configured `show`. Scanning and hover
+-- keep working in every mode; 'never' only hides the extmarks.
 
 local api = vim.api
 local uv = vim.uv
@@ -13,8 +18,15 @@ local resolve = require('i18n-inline.resolve')
 
 local M = {}
 
+local SHOW_MODES = { 'always', 'problems', 'never' }
+
 local ns_id
 local state = {}
+-- Session-wide show-mode override (R6.5); nil = follow config.
+local show_override = nil
+-- The configured mode most recently seen while rendering, so the toggle
+-- cycle starts from the active project's `show` rather than global defaults.
+local last_cfg_show = nil
 
 local function ns()
   if not ns_id then
@@ -33,6 +45,30 @@ end
 
 function M.state(buf)
   return state[real_buf(buf)]
+end
+
+-- Cycle the inline display mode for the session and re-render.
+-- Returns the new mode ('always' | 'problems' | 'never').
+function M.toggle()
+  local cur = show_override or last_cfg_show or config.get().show
+  local next_i = 1
+  for i, mode in ipairs(SHOW_MODES) do
+    if mode == cur then
+      next_i = (i % #SHOW_MODES) + 1
+      break
+    end
+  end
+  show_override = SHOW_MODES[next_i]
+  for buf, st in pairs(state) do
+    if st and st.project and api.nvim_buf_is_valid(buf) then
+      M.refresh(buf)
+    end
+  end
+  return show_override
+end
+
+function M.show_mode()
+  return show_override
 end
 
 -- Is this buffer eligible for previewing, under the project's config?
@@ -90,6 +126,7 @@ function M.clear(buf)
     clear_marks(buf, st)
     st.matches = nil
     st.project = nil
+    M._unset_keymaps(buf, st)
   end
 end
 
@@ -102,9 +139,16 @@ function M.unload(buf)
   resolve.forget(buf)
 end
 
+-- Effective `show` after the runtime toggle.
+local function effective_show(cfg)
+  last_cfg_show = cfg.show
+  return show_override or cfg.show
+end
+
 local function build_virt_text(m, cfg)
   if m.status == 'missing' then
-    return cfg.prefix .. '✗ ' .. cfg.missing_text, cfg.hl.missing
+    local text = m.in_source and ('missing in ' .. cfg.preview_lang) or cfg.missing_text
+    return cfg.prefix .. '✗ ' .. text, cfg.hl.missing
   end
   local sign = m.status == 'mismatch' and '≠ ' or ''
   local value = util.truncate(util.display_value(m.value or ''), cfg.max_len)
@@ -112,9 +156,16 @@ local function build_virt_text(m, cfg)
 end
 
 local function render(buf, st, cfg)
+  local eff = effective_show(cfg)
+  if eff == 'never' then
+    -- Popover/audit-only mode: matches stay in state (hover works), no marks.
+    clear_marks(buf, st)
+    return
+  end
+
   local shown = {}
   for _, m in ipairs(st.matches) do
-    if cfg.show == 'always' or m.status == 'mismatch' or m.status == 'missing' then
+    if eff == 'always' or m.status == 'mismatch' or m.status == 'missing' then
       shown[#shown + 1] = m
     end
   end
@@ -130,6 +181,9 @@ local function render(buf, st, cfg)
       virt_text_pos = cfg.position,
       hl_mode = 'combine',
     }
+    if cfg.extmark_priority then
+      opts.priority = cfg.extmark_priority
+    end
     if st.virt_ids and st.virt_ids[i] then
       opts.id = st.virt_ids[i]
     end
@@ -158,6 +212,9 @@ local function render(buf, st, cfg)
           end_row = m.row_end,
           end_col = m.col_end + 1, -- include the closing quote
         }
+        if cfg.extmark_priority then
+          opts.priority = cfg.extmark_priority
+        end
         if st.hl_ids and st.hl_ids[n] then
           opts.id = st.hl_ids[n]
         end
@@ -169,6 +226,44 @@ local function render(buf, st, cfg)
     end
     st.hl_ids = hl_ids
   end
+end
+
+-- Buffer-local action keymaps (R6.1/R6.7). Applied once per distinct keymap
+-- configuration when a buffer's project resolves — so project-file keymaps
+-- work, and nothing leaks to unrelated buffers.
+local ACTIONS = {
+  hover = '<Plug>(i18n-inline-hover)',
+  toggle = '<Plug>(i18n-inline-toggle)',
+}
+
+function M._unset_keymaps(buf, st)
+  if st.set_keymaps then
+    for _, lhs in pairs(st.set_keymaps) do
+      pcall(vim.keymap.del, 'n', lhs, { buffer = buf })
+    end
+    st.set_keymaps = nil
+  end
+end
+
+local function apply_keymaps(buf, st, cfg)
+  local sig = tostring(cfg.keymaps and cfg.keymaps.hover) .. '|' .. tostring(cfg.keymaps and cfg.keymaps.toggle)
+  if st.keymap_sig == sig then
+    return
+  end
+  M._unset_keymaps(buf, st)
+  st.set_keymaps = {}
+  for action, plug in pairs(ACTIONS) do
+    local lhs = cfg.keymaps and cfg.keymaps[action]
+    if lhs then
+      vim.keymap.set('n', lhs, plug, {
+        buffer = buf,
+        silent = true,
+        desc = action == 'hover' and 'i18n translations popover' or 'i18n toggle inline previews',
+      })
+      st.set_keymaps[action] = lhs
+    end
+  end
+  st.keymap_sig = sig
 end
 
 function M.refresh(buf)
@@ -195,11 +290,15 @@ function M.refresh(buf)
     M.clear(buf)
     return
   end
+  local source_keys = nil
+  if cfg.source_lang and cfg.source_lang ~= cfg.preview_lang then
+    source_keys = resolve.ensure_lang(project, cfg.source_lang)
+  end
 
   local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
   local text = table.concat(lines, '\n')
   local offsets = util.build_line_offsets(text)
-  local matches = scan.scan(text, cfg.patterns)
+  local matches = scan.scan(text, cfg)
 
   for _, m in ipairs(matches) do
     m.row_start, m.col_start = util.byte_to_pos(offsets, m.call_s)
@@ -207,7 +306,7 @@ function M.refresh(buf)
     if m.str_s then
       m.str_row_s, m.str_col_s = util.byte_to_pos(offsets, m.str_s)
     end
-    m.status, m.value = scan.status(m, keys)
+    m.status, m.value, m.in_source = scan.status(m, keys, cfg, source_keys)
   end
 
   local st = state[buf]
@@ -218,10 +317,11 @@ function M.refresh(buf)
   st.project = project
   st.matches = matches
 
+  apply_keymaps(buf, st, cfg)
   render(buf, st, cfg)
 end
 
--- A JSON file was saved: refresh whatever it affects.
+-- A file was saved: refresh whatever it affects.
 function M.on_file_saved(path)
   local name = vim.fs.basename(path) or ''
   -- Per-project config changed: drop all project caches and re-resolve.
@@ -253,6 +353,8 @@ function M._reset()
     M.unload(buf)
   end
   state = {}
+  show_override = nil
+  last_cfg_show = nil
 end
 
 return M

@@ -44,16 +44,18 @@ end
 
 local tmp_roots = {}
 
--- Create a temp project: <root>/.i18n-inline.json, <root>/tr/*.json, and
--- returns the root. `project_cfg` may be nil to skip the project file.
-local function make_project(project_cfg, langs)
+-- Create a temp project: <root>/.i18n-inline.json, <root>/<dir>/<lang>.json,
+-- and return the root. `project_cfg` may be nil to skip the project file;
+-- `dirname` defaults to 'tr'.
+local function make_project(project_cfg, langs, dirname)
+  dirname = dirname or 'tr'
   local root = vim.fn.tempname() .. '-i18ntest-' .. tostring(#tmp_roots + 1)
   uv.fs_mkdir(root, 493)
-  uv.fs_mkdir(root .. '/tr', 493)
+  uv.fs_mkdir(root .. '/' .. dirname, 493)
   tmp_roots[#tmp_roots + 1] = root
 
   for lang, content in pairs(langs) do
-    local fh = assert(io.open(('%s/tr/%s.json'):format(root, lang), 'w'))
+    local fh = assert(io.open(('%s/%s/%s.json'):format(root, dirname, lang), 'w'))
     fh:write(vim.json.encode(content))
     fh:close()
   end
@@ -129,7 +131,7 @@ t('scan finds all call variants and rejects false positives', function()
     '%(i18n/tr%s*%[%s*:([%w%.%-_/]+)',
     '%(i18n/tr%-release%s*%[%s*:([%w%.%-_/]+)',
   }
-  local ms = scan.scan(SAMPLE, patterns)
+  local ms = scan.scan(SAMPLE, { patterns = patterns })
   local keys = {}
   for _, m in ipairs(ms) do
     keys[#keys + 1] = m.key
@@ -140,7 +142,7 @@ end)
 
 t('scan parses multiline fallback and escapes', function()
   local scan = require('i18n-inline.scan')
-  local ms = scan.scan(SAMPLE, { '%(tr%s*%[%s*:([%w%.%-_/]+)' })
+  local ms = scan.scan(SAMPLE, { patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' } })
   local by_key = {}
   for _, m in ipairs(ms) do
     by_key[m.key] = m
@@ -459,7 +461,11 @@ t('check: audit fills quickfix with mismatches', function()
   api.nvim_buf_delete(buf, { force = true })
 end)
 
--- ===== real-repo smoke (optional) =====
+-- ===== generalization (R1-R7: nested keys, namespaces, formats, presets) =====
+
+dofile(here .. '/generalization.lua')(t, eq, ok_, make_project)
+
+-- ===== real-repo smoke (optional, I18N_SMOKE_REPO) =====
 
 local smoke_repo = os.getenv('I18N_SMOKE_REPO')
 if smoke_repo and smoke_repo ~= '' then
@@ -507,7 +513,7 @@ if smoke_repo and smoke_repo ~= '' then
       if fh2 then
         local text = fh2:read('*a')
         fh2:close()
-        for _, m in ipairs(scan.scan(text, patterns)) do
+        for _, m in ipairs(scan.scan(text, { patterns = patterns })) do
           total = total + 1
           local status = scan.status(m, ko)
           if status == 'mismatch' then
