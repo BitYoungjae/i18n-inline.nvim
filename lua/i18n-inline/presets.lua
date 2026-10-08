@@ -11,6 +11,12 @@ local M = {}
 -- pattern into a precise one.
 local JS_CALL = "([%w_.$]+)%s*%(%s*['\"]([^'\"\n]+)['\"]"
 
+-- gettext keys are source text, where apostrophes and quotes are common
+-- ("Don't panic"): one pattern per quote style, so the key runs to the
+-- matching quote. (JS_CALL stops at either quote — fine for dotted keys.)
+local CALL_DQ = '([%w_.$]+)%s*%(%s*"([^"\n]+)"'
+local CALL_SQ = "([%w_.$]+)%s*%(%s*'([^'\n]+)'"
+
 -- Binding patterns anchor on the `const` literal: matching the generic
 -- `ident =` prefix instead costs ~16x more on data-heavy files (the lazy
 -- bridge class backtracks through long identifier runs). Hooks are
@@ -89,7 +95,9 @@ M.presets = {
     filetypes = { 'dart' },
     patterns = {
       'AppLocalizations%.of%([^)]*%)%!?%.([%w_]+)', -- AppLocalizations.of(context)!.key
-      'l10n%.([%w_]+)', -- context.l10n.key / <var>.l10n.key
+      -- context.l10n.key / l10n.key. The trailing frontier rejects a key
+      -- followed by a quote: `import '…/l10n/l10n.dart'` is not a lookup.
+      "%f[%w_]l10n%.([%w_]+)%f[^%w_'\"]",
     },
     key_style = 'flat',
     fallback_style = 'none',
@@ -105,7 +113,7 @@ M.presets = {
   -- preview and missing/untranslated detection only.
   gettext = {
     filetypes = { 'python', 'javascript', 'typescript', 'typescriptreact', 'javascriptreact', 'ruby', 'php', 'c', 'cpp' },
-    patterns = { JS_CALL },
+    patterns = { CALL_DQ, CALL_SQ },
     aliases = { 't', '_', 'gettext', '__', 'ngettext' },
     key_style = 'flat',
     format = 'po',

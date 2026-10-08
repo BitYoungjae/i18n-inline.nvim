@@ -8,10 +8,29 @@
 local config = require('i18n-inline.config')
 local resolve = require('i18n-inline.resolve')
 local scan = require('i18n-inline.scan')
+local util = require('i18n-inline.util')
 
 local M = {}
 
 local SAMPLE_FILES = 25
+-- The sample is spread evenly over the (sorted) source tree: the first N
+-- files of a walk all come from the first directories, which are often
+-- build scripts or tooling with no i18n calls (cljs-app: 0 calls in the
+-- first 25 files of 1,200). Walking is cheap (~5 ms per 1k files); the cap
+-- bounds it on huge trees.
+local WALK_CAP = 5000
+
+local function sample(files)
+  if #files <= SAMPLE_FILES then
+    return files
+  end
+  local out = {}
+  local step = #files / SAMPLE_FILES
+  for i = 0, SAMPLE_FILES - 1 do
+    out[#out + 1] = files[math.floor(i * step) + 1]
+  end
+  return out
+end
 
 local function count_keys(keys)
   local n = 0
@@ -19,51 +38,6 @@ local function count_keys(keys)
     n = n + 1
   end
   return n
-end
-
--- Walk eligible source files (by check.extensions) up to a cap.
-local function sample_files(project)
-  local cfg = project.cfg
-  local ext_set = {}
-  for _, e in ipairs(cfg.check.extensions) do
-    ext_set[e:lower()] = true
-  end
-  local excl = {}
-  for _, d in ipairs(cfg.check.exclude_dirs) do
-    excl[d] = true
-  end
-  local files = {}
-  local function walk(dir)
-    if #files >= SAMPLE_FILES then
-      return
-    end
-    local fs = vim.uv.fs_scandir(dir)
-    if not fs then
-      return
-    end
-    while true do
-      local name, ftype = vim.uv.fs_scandir_next(fs)
-      if not name then
-        break
-      end
-      local path = dir .. '/' .. name
-      if ftype == 'directory' then
-        if not excl[name] then
-          walk(path)
-        end
-      elseif ftype == 'file' then
-        local ext = name:match('%.([%w]+)$')
-        if ext and ext_set[ext:lower()] then
-          files[#files + 1] = path
-          if #files >= SAMPLE_FILES then
-            return
-          end
-        end
-      end
-    end
-  end
-  walk(project.root)
-  return files
 end
 
 -- Nested-detection: read the preview file raw and see whether its decoded
@@ -75,12 +49,10 @@ local function check_key_style(project)
   if not path or path:match('%.json$') == nil or cfg.key_style ~= 'flat' then
     return
   end
-  local fh = io.open(path, 'r')
-  if not fh then
+  local raw = util.read_file(path)
+  if not raw then
     return
   end
-  local raw = fh:read('*a')
-  fh:close()
   local ok, decoded = pcall(vim.json.decode, raw)
   if not ok or type(decoded) ~= 'table' then
     return
@@ -104,7 +76,7 @@ function M.check()
   vim.health.start('i18n-inline.nvim')
 
   local v = vim.version()
-  if v.major == 0 and v.minor >= 10 then
+  if vim.fn.has('nvim-0.10') == 1 then
     vim.health.ok(('Neovim %d.%d.%d'):format(v.major, v.minor, v.patch))
   else
     vim.health.error('Neovim 0.10+ is required (vim.uv API)')
@@ -137,16 +109,32 @@ function M.check()
 
   if project.config_file then
     vim.health.ok(('project config: %s'):format(project.config_file))
+    local raw = util.read_file(project.config_file)
+    local ok, decoded = pcall(vim.json.decode, raw or '')
+    local unknown = ok and type(decoded) == 'table' and config.unknown_keys(decoded) or {}
+    if #unknown > 0 then
+      vim.health.warn(('unknown options in the project file (ignored): %s'):format(table.concat(unknown, ', ')))
+    end
   else
     vim.health.ok(('translation directory: %s (no %s, using setup defaults)'):format(project.dir, cfg.project_file))
   end
 
-  local langs = {}
-  for lang in pairs(project.langs) do
-    langs[#langs + 1] = lang
-  end
-  table.sort(langs)
+  local langs = resolve.sorted_langs(project)
   vim.health.ok(('languages: %s'):format(table.concat(langs, ', ')))
+
+  -- Every file, not just preview/source: a broken one would otherwise only
+  -- surface later, in the popover or the audit.
+  local broken = 0
+  for _, lang in ipairs(langs) do
+    local ok, lerr = resolve.ensure_lang(project, lang)
+    if not ok then
+      broken = broken + 1
+      vim.health.error(lerr or ('failed to load language "%s"'):format(lang))
+    end
+  end
+  if broken == 0 then
+    vim.health.ok(('all %d translation files parse'):format(#langs))
+  end
 
   if project.langs[project.cfg.preview_lang] == nil then
     vim.health.error(('no file for preview_lang "%s" in %s'):format(project.cfg.preview_lang, project.dir))
@@ -175,7 +163,7 @@ function M.check()
   -- Sample the source tree: do the patterns find calls, and do their keys
   -- resolve? This is the G2-class detector — a namespace/pattern mismatch
   -- shows up as "keys never resolve".
-  local files = sample_files(project)
+  local files = sample(util.walk_files(project.root, cfg.check.extensions, cfg.check.exclude_dirs, WALK_CAP))
   if #files == 0 then
     vim.health.warn(
       ('no files matching check.extensions (%s) found under %s')
@@ -186,10 +174,8 @@ function M.check()
 
   local calls, resolved, bindings_n = 0, 0, 0
   for _, path in ipairs(files) do
-    local fh = io.open(path, 'r')
-    if fh then
-      local text = fh:read('*a')
-      fh:close()
+    local text = util.read_file(path)
+    if text then
       local b = scan.extract_bindings(text, project.cfg.namespace_patterns)
       local n = 0
       for _ in pairs(b) do
@@ -198,7 +184,7 @@ function M.check()
       bindings_n = bindings_n + n
       for _, m in ipairs(scan.scan(text, project.cfg)) do
         calls = calls + 1
-        if keys[m.key] ~= nil and keys[m.key] ~= vim.NIL then
+        if keys[m.key] ~= nil then
           resolved = resolved + 1
         end
       end

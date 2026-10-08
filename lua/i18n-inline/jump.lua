@@ -19,28 +19,34 @@ local api = vim.api
 local preview = require('i18n-inline.preview')
 local resolve = require('i18n-inline.resolve')
 local formats = require('i18n-inline.formats')
+local util = require('i18n-inline.util')
 
 local M = {}
 
-local function notify(msg, level)
-  vim.notify('[i18n-inline] ' .. msg, level or vim.log.levels.INFO)
-end
+local notify = util.notify
 
+-- Ex command per open mode (`:tab {file}` is not a command — it would run
+-- `:/{file}` as a search).
+local OPEN_CMD = { edit = 'edit', split = 'split', vsplit = 'vsplit', tab = 'tabedit' }
+
+-- Lines of a translation file: the loaded buffer when there is one (it may
+-- hold unsaved edits, and that is the text the cursor will land in), else
+-- the file on disk.
 local function read_lines(path)
-  local fh = io.open(path, 'r')
-  if not fh then
-    return nil
+  -- exact name comparison: with no exact match, bufnr() falls back to
+  -- file-pattern matching, where a `[locale]` path segment is a character
+  -- class — an unopened `…/[locale]/ko.json` would pick up `…/l/ko.json`
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_is_loaded(buf) and api.nvim_buf_get_name(buf) == path then
+      return api.nvim_buf_get_lines(buf, 0, -1, false)
+    end
   end
-  local lines = {}
-  for l in fh:lines() do
-    lines[#lines + 1] = l
-  end
-  fh:close()
-  return lines
+  local raw = util.read_file(path)
+  return raw and vim.split(raw, '\r?\n')
 end
 
--- lnum/col of `key` in `lang`'s file, or nil when the file has no line for
--- it (the key may still exist — minified files, unusual formatting).
+-- lnum/col/len of `key` in `lang`'s file, or nil when the file has no line
+-- for it (the key may still exist — minified files, unusual formatting).
 local function locate(project, lang, key)
   local path = project.langs[lang]
   if not path then
@@ -57,49 +63,67 @@ local function locate(project, lang, key)
   return fmt.find_line(lines, key, project.cfg)
 end
 
+-- A buffer extmark, not matchaddpos: a match belongs to the window, so
+-- jumping back (<C-o>) within the flash would paint it over the code buffer
+-- at the translation file's coordinates.
+local flash_ns = api.nvim_create_namespace('i18n_inline_flash')
+
 local function flash(lnum, col, len)
-  local ok, mid = pcall(vim.fn.matchaddpos, 'IncSearch', { { lnum, col, len } })
+  local buf = api.nvim_get_current_buf()
+  local line = api.nvim_buf_get_lines(buf, lnum - 1, lnum, false)[1] or ''
+  local ok, id = pcall(api.nvim_buf_set_extmark, buf, flash_ns, lnum - 1, col - 1, {
+    end_col = math.min(col - 1 + len, #line),
+    hl_group = 'IncSearch',
+  })
   if ok then
-    local win = api.nvim_get_current_win()
     vim.defer_fn(function()
-      pcall(vim.fn.matchdelete, mid, win)
+      pcall(api.nvim_buf_del_extmark, buf, flash_ns, id)
     end, 800)
   end
 end
 
-local function open_at(open, path, lnum, col, key)
-  vim.cmd(('%s %s'):format(open == 'edit' and 'edit' or open, vim.fn.fnameescape(path)))
+-- Open `path` and put the cursor on (lnum, col), flashing `len` bytes.
+-- Returns false when the file could not be opened (E37 and friends are
+-- reported instead of raised).
+local function open_at(open, path, lnum, col, len)
+  local ok, err = pcall(vim.cmd, ('%s %s'):format(OPEN_CMD[open] or 'edit', vim.fn.fnameescape(path)))
+  if not ok then
+    notify(tostring(err):gsub('^Vim%(%w+%):', ''), vim.log.levels.ERROR)
+    return false
+  end
+  lnum = math.min(lnum, api.nvim_buf_line_count(0))
   api.nvim_win_set_cursor(0, { lnum, math.max(0, col - 1) })
   vim.cmd('normal! zz')
-  flash(lnum, col, #key + 2) -- include the quotes
+  if len then
+    flash(lnum, col, len)
+  end
+  return true
 end
 
 -- Jump to one language, with the missing->source fallback.
 local function jump_lang(project, lang, key, open)
   local cfg = project.cfg
-  local keys = resolve.ensure_lang(project, lang)
-  if keys and keys[key] ~= nil and keys[key] ~= vim.NIL then
-    local lnum, col = locate(project, lang, key)
+  if resolve.value(project, lang, key) ~= nil then
+    local lnum, col, len = locate(project, lang, key)
     if lnum then
-      open_at(open, project.langs[lang], lnum, col, key)
+      open_at(open, project.langs[lang], lnum, col, len)
       return
     end
     -- Key exists but no line was located (minified/unusual file): open at top.
-    open_at(open, project.langs[lang], 1, 1, key)
-    notify(('opened %s — could not locate the line for %s'):format(vim.fs.basename(project.langs[lang]), key))
+    if open_at(open, project.langs[lang], 1, 1) then
+      notify(('opened %s — could not locate the line for %s'):format(vim.fs.basename(project.langs[lang]), key))
+    end
     return
   end
 
   -- Missing in the target: point at the source of truth when possible.
   local src = cfg.source_lang
-  if src and src ~= lang then
-    local skeys = resolve.ensure_lang(project, src)
-    if skeys and skeys[key] ~= nil and skeys[key] ~= vim.NIL then
-      local lnum, col = locate(project, src, key)
-      open_at(open, project.langs[src], lnum or 1, col or 1, key)
+  if src and src ~= lang and resolve.value(project, src, key) ~= nil then
+    local lnum, col, len = locate(project, src, key)
+    if open_at(open, project.langs[src], lnum or 1, col or 1, len) then
       notify(('missing in %s — showing %s'):format(lang, src), vim.log.levels.WARN)
-      return
     end
+    return
   end
   notify(('key %s not found in %s'):format(key, lang), vim.log.levels.WARN)
 end
@@ -107,17 +131,8 @@ end
 -- Quickfix variant: one item per language that has the key.
 local function jump_quickfix(project, key)
   local items, missing = {}, {}
-  local langs = {}
-  for lang in pairs(project.langs) do
-    langs[#langs + 1] = lang
-  end
-  table.sort(langs)
-  for _, lang in ipairs(langs) do
-    local keys = resolve.ensure_lang(project, lang)
-    local value = keys and keys[key] or nil
-    if value == vim.NIL then
-      value = nil
-    end
+  for _, lang in ipairs(resolve.sorted_langs(project)) do
+    local value = resolve.value(project, lang, key)
     if value == nil then
       missing[#missing + 1] = lang
     else
@@ -126,7 +141,7 @@ local function jump_quickfix(project, key)
         filename = project.langs[lang],
         lnum = lnum or 1,
         col = col or 1,
-        text = key,
+        text = ('%s  %s'):format(key, util.quote(value)),
       }
     end
   end
@@ -145,18 +160,9 @@ end
 --- quickfix variant; lang overrides jump.lang for this jump (:I18nJump <lang>)
 function M.jump(opts)
   opts = opts or {}
-  local buf = api.nvim_get_current_buf()
-  local row = api.nvim_win_get_cursor(0)[1] - 1
-  local m = preview.match_at(buf, row)
+  local m, project, err = preview.current_match()
   if not m then
-    notify('no i18n call under the cursor')
-    return
-  end
-
-  local st = preview.state(buf)
-  local project = st and st.project
-  if not project then
-    notify('no translation project for this buffer', vim.log.levels.WARN)
+    notify(err)
     return
   end
   local cfg = project.cfg
@@ -172,20 +178,7 @@ function M.jump(opts)
   if opts.lang then
     lang = opts.lang
   elseif jcfg.lang == 'ask' then
-    local langs = {}
-    for l in pairs(project.langs) do
-      langs[#langs + 1] = l
-    end
-    table.sort(langs, function(a, b)
-      if a == cfg.preview_lang then
-        return true
-      end
-      if b == cfg.preview_lang then
-        return false
-      end
-      return a < b
-    end)
-    vim.ui.select(langs, { prompt = 'i18n jump to language:' }, function(choice)
+    vim.ui.select(resolve.sorted_langs(project), { prompt = 'i18n jump to language:' }, function(choice)
       if choice then
         jump_lang(project, choice, m.key, open)
       end
@@ -196,7 +189,7 @@ function M.jump(opts)
   end
   if not lang or not project.langs[lang] then
     notify(('no translation file for "%s" (available: %s)')
-      :format(tostring(lang), table.concat(vim.tbl_keys(project.langs), ', ')), vim.log.levels.WARN)
+      :format(tostring(lang), table.concat(resolve.sorted_langs(project), ', ')), vim.log.levels.WARN)
     return
   end
   jump_lang(project, lang, m.key, open)

@@ -16,7 +16,8 @@ local presets = require('i18n-inline.presets')
 local M = {}
 
 local defaults = {
-  -- Framework preset: 'next-intl' | 'i18next' | 'vue-i18n' | 'gettext'.
+  -- Framework preset: 'next-intl' | 'i18next' | 'vue-i18n' | 'flutter' |
+  -- 'gettext'.
   -- Provides filetypes/patterns/addressing defaults for the stack.
   preset = nil,
   -- Per-project config file name, resolved upward from the buffer path.
@@ -26,12 +27,12 @@ local defaults = {
   -- project file or setup()".
   dir = nil,
   -- Language list. nil discovers translation files in `dir` (ko.json/ko.po
-  -- -> "ko").
+  -- -> "ko"); with discovery, a list restricts which files are used.
   languages = nil,
   -- Language -> file path template (e.g. 'locales/%s.json').
   -- When set, `languages` must be given explicitly.
   file_template = nil,
-  -- File format: nil auto-detects by extension (.json, .po). Built-in
+  -- File format: nil auto-detects by extension (.json, .arb, .po). Built-in
   -- formats are listed by :checkhealth; see formats.lua to add more.
   format = nil,
   -- Key addressing (R1): 'flat' reads the file as key -> value (today's
@@ -83,11 +84,15 @@ local defaults = {
   max_len = 60, -- max preview length in runes
   position = 'inline', -- 'inline' | 'eol'
   show = 'always', -- 'always' | 'problems' | 'never' (popover/audit only)
+  -- Highlight groups. The I18nInline* groups are defined by the plugin as
+  -- default links (Comment / DiagnosticWarn / DiagnosticError /
+  -- DiagnosticUnderlineWarn), so a colorscheme can restyle them by name;
+  -- any group name works here.
   hl = {
-    match = 'Comment',
-    mismatch = 'DiagnosticWarn',
-    missing = 'DiagnosticError',
-    underline = 'DiagnosticUnderlineWarn',
+    match = 'I18nInlineValue',
+    mismatch = 'I18nInlineMismatch',
+    missing = 'I18nInlineMissing',
+    underline = 'I18nInlineMismatchUnderline',
   },
   underline_mismatch = true, -- underline the fallback string on mismatch
   -- Action keymaps (R6.7): no defaults ship — map `<Plug>(i18n-inline-hover)`
@@ -115,10 +120,13 @@ local defaults = {
   -- default.
   extmark_priority = nil,
   -- Popover bounds (R6.6): value truncation width, window width and height.
+  -- border: any nvim_open_win border; nil follows 'winborder' when set,
+  -- else 'rounded'.
   hover = {
     max_len = 60,
     width = 60,
     max_height = 20,
+    border = nil,
   },
   -- Performance
   debounce_ms = 150,
@@ -137,86 +145,159 @@ local config
 
 function M.get()
   if not config then
-    return vim.deepcopy(defaults)
+    config = vim.deepcopy(defaults)
   end
   return config
 end
 
+-- Option schema (validation and unknown-key detection share it). A spec is
+-- a type name, an enum list, or a nested schema for dict options:
+--   'string' | 'number' | 'boolean'
+--   'list'     — list of strings, may be empty
+--   'patterns' — non-empty list of strings
+--   { enum = {...} }
+--   { fields = { … } } — dict; unknown sub-keys are reported too
+local schema = {
+  preset = { enum = presets.names() },
+  project_file = 'string',
+  dir = 'string',
+  languages = 'patterns',
+  file_template = 'string',
+  format = { enum = nil }, -- filled lazily (formats requires nothing from here)
+  key_style = { enum = { 'flat', 'nested' } },
+  separator = 'string',
+  preview_lang = 'string',
+  source_lang = 'string',
+  filetypes = 'list',
+  patterns = 'patterns',
+  namespace_patterns = 'list',
+  aliases = 'list',
+  fallback_style = { enum = { 'literal', 'prop', 'none' } },
+  fallback_props = 'list',
+  compare = { enum = { 'fallback', 'none' } },
+  normalize = { enum = { 'none', 'placeholders' } },
+  prefix = 'string',
+  missing_text = 'string',
+  max_len = 'number',
+  position = { enum = { 'inline', 'eol' } },
+  show = { enum = { 'always', 'problems', 'never' } },
+  hl = { fields = { match = 'string', mismatch = 'string', missing = 'string', underline = 'string' } },
+  underline_mismatch = 'boolean',
+  keymaps = { fields = { hover = 'string', toggle = 'string', jump = 'string' } },
+  keymap = 'string',
+  jump = {
+    fields = {
+      lang = { enum = { 'preview', 'source', 'ask' } },
+      open = { enum = { 'edit', 'split', 'vsplit', 'tab', 'quickfix' } },
+    },
+  },
+  extmark_priority = 'number',
+  hover = { fields = { max_len = 'number', width = 'number', max_height = 'number', border = 'any' } },
+  debounce_ms = 'number',
+  max_filesize = 'number',
+  check = { fields = { extensions = 'list', exclude_dirs = 'list', ignore = 'list' } },
+}
+
 local function is_string_list(v)
-  if type(v) ~= 'table' or #v == 0 then
+  if type(v) ~= 'table' then
     return false
   end
-  for _, s in ipairs(v) do
-    if type(s) ~= 'string' then
+  for k, s in pairs(v) do
+    if type(k) ~= 'number' or type(s) ~= 'string' then
       return false
     end
   end
   return true
 end
 
-local function one_of(v, allowed)
-  return v == nil or vim.tbl_contains(allowed, v)
+local function quoted(list)
+  local out = {}
+  for i, v in ipairs(list) do
+    out[i] = '"' .. v .. '"'
+  end
+  return table.concat(out, ', ')
+end
+
+-- nil when `v` satisfies `spec`, else an error message for `name`.
+local function check_value(name, v, spec)
+  if spec == 'any' then
+    return nil
+  elseif spec == 'list' then
+    if not is_string_list(v) then
+      return name .. ' must be a list of strings'
+    end
+  elseif spec == 'patterns' then
+    if not is_string_list(v) or #v == 0 then
+      return name .. ' must be a non-empty list of strings'
+    end
+  elseif type(spec) == 'string' then
+    if type(v) ~= spec then
+      return ('%s must be a %s'):format(name, spec)
+    end
+  elseif spec.enum then
+    if not vim.tbl_contains(spec.enum, v) then
+      if name == 'preset' then
+        return ('unknown preset "%s" (available: %s)'):format(tostring(v), table.concat(spec.enum, ', '))
+      end
+      return ('%s must be one of: %s'):format(name, quoted(spec.enum))
+    end
+  elseif spec.fields then
+    if type(v) ~= 'table' then
+      return ('%s must be a table'):format(name)
+    end
+    for k, sub in pairs(v) do
+      if spec.fields[k] then
+        local err = check_value(name .. '.' .. k, sub, spec.fields[k])
+        if err then
+          return err
+        end
+      end
+    end
+  end
+  return nil
 end
 
 -- Validate a config table (used for both setup() and project files).
 -- Returns nil when valid, or an error message.
 local function validate(cfg)
-  if cfg.patterns ~= nil and not is_string_list(cfg.patterns) then
-    return 'patterns must be a non-empty list of strings'
-  end
-  if cfg.namespace_patterns ~= nil and not is_string_list(cfg.namespace_patterns) then
-    return 'namespace_patterns must be a non-empty list of strings'
-  end
-  if cfg.aliases ~= nil and not is_string_list(cfg.aliases) then
-    return 'aliases must be a non-empty list of strings'
+  schema.format.enum = schema.format.enum or require('i18n-inline.formats').names()
+  local names = vim.tbl_keys(schema)
+  table.sort(names) -- deterministic first error
+  for _, name in ipairs(names) do
+    if cfg[name] ~= nil then
+      local err = check_value(name, cfg[name], schema[name])
+      if err then
+        return err
+      end
+    end
   end
   if cfg.file_template and not cfg.languages then
     return 'file_template requires an explicit languages list'
   end
-  if not one_of(cfg.key_style, { 'flat', 'nested' }) then
-    return 'key_style must be "flat" or "nested"'
-  end
-  if not one_of(cfg.compare, { 'fallback', 'none' }) then
-    return 'compare must be "fallback" or "none"'
-  end
-  if not one_of(cfg.normalize, { 'none', 'placeholders' }) then
-    return 'normalize must be "none" or "placeholders"'
-  end
-  if not one_of(cfg.fallback_style, { 'literal', 'prop', 'none' }) then
-    return 'fallback_style must be "literal", "prop" or "none"'
-  end
-  if not one_of(cfg.show, { 'always', 'problems', 'never' }) then
-    return 'show must be "always", "problems" or "never"'
-  end
-  if not one_of(cfg.format, require('i18n-inline.formats').names()) then
-    return ('format must be one of: %s'):format(table.concat(require('i18n-inline.formats').names(), ', '))
-  end
-  if cfg.preset ~= nil and not presets.get(cfg.preset) then
-    return ('unknown preset "%s" (available: %s)'):format(cfg.preset, table.concat(presets.names(), ', '))
-  end
-  if cfg.keymaps ~= nil then
-    if type(cfg.keymaps) ~= 'table' then
-      return 'keymaps must be a table { hover = …, toggle = …, jump = … }'
-    end
-    for _, k in ipairs({ 'hover', 'toggle', 'jump' }) do
-      local v = cfg.keymaps[k]
-      if v ~= nil and type(v) ~= 'string' then
-        return ('keymaps.%s must be a string or null'):format(k)
+  return nil
+end
+
+-- Keys the schema does not know (typos like "preview_language" would
+-- otherwise be silently ignored). Dotted for nested dicts. JSON-file
+-- conventions ("$schema", "//" comment keys) are not options and pass.
+function M.unknown_keys(cfg)
+  local out = {}
+  for k, v in pairs(cfg or {}) do
+    local spec = schema[k]
+    if type(k) == 'string' and (k:sub(1, 1) == '$' or k:sub(1, 2) == '//') then
+      -- metadata, not an option
+    elseif spec == nil then
+      out[#out + 1] = tostring(k)
+    elseif type(spec) == 'table' and spec.fields and type(v) == 'table' then
+      for sub in pairs(v) do
+        if spec.fields[sub] == nil then
+          out[#out + 1] = k .. '.' .. tostring(sub)
+        end
       end
     end
   end
-  if cfg.jump ~= nil then
-    if type(cfg.jump) ~= 'table' then
-      return 'jump must be a table { lang = …, open = … }'
-    end
-    if not one_of(cfg.jump.lang, { 'preview', 'source', 'ask' }) then
-      return 'jump.lang must be "preview", "source" or "ask"'
-    end
-    if not one_of(cfg.jump.open, { 'edit', 'split', 'vsplit', 'tab', 'quickfix' }) then
-      return 'jump.open must be "edit", "split", "vsplit", "tab" or "quickfix"'
-    end
-  end
-  return nil
+  table.sort(out)
+  return out
 end
 
 -- Drop keys explicitly set to JSON null (decoded as vim.NIL): a project
@@ -257,6 +338,10 @@ function M.setup(opts)
   local err = validate(opts)
   if err then
     error('[i18n-inline] ' .. err)
+  end
+  local unknown = M.unknown_keys(opts)
+  if #unknown > 0 then
+    vim.notify('[i18n-inline] setup(): unknown options ignored: ' .. table.concat(unknown, ', '), vim.log.levels.WARN)
   end
   setup_opts = opts
   config = build({})

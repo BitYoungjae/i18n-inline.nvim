@@ -2,8 +2,12 @@
 --
 -- A format is a registry entry with two functions:
 --   decode(raw, cfg) -> flat key->value map  |  nil, err
---   find_line(lines, key, cfg) -> lnum, col  | nil   (1-based; :I18nJump)
--- The decoded map is always FLAT: string key -> scalar value. Formats with
+--   find_line(lines, key, cfg) -> lnum, col, len | nil   (1-based; :I18nJump;
+--                                 len = byte length of the token to flash)
+-- The decoded map is always FLAT and STRING-VALUED: string key -> string.
+-- Numbers and booleans are stringified, JSON nulls and (in flat mode)
+-- nested objects are dropped, so consumers index `keys[key]` and get a
+-- displayable string or nil — never vim.NIL or a table. Formats with
 -- hierarchical data (nested JSON) flatten at decode time using
 -- cfg.key_style / cfg.separator, so scan/preview/hover/check never deal
 -- with paths.
@@ -20,6 +24,18 @@
 
 local M = {}
 
+-- Leaf value -> display string, or nil for values that are not messages
+-- (JSON null decodes to vim.NIL; tables are structure, not values).
+local function scalar(v)
+  local t = type(v)
+  if t == 'string' then
+    return v
+  elseif t == 'number' or t == 'boolean' then
+    return tostring(v)
+  end
+  return nil
+end
+
 -- Flatten a nested table into separator-joined paths.
 -- Collision policy (R1.5): when a literal leaf key like "a.b" and a nested
 -- path {"a": {"b": …}} produce the same flat key, the path composed from
@@ -33,7 +49,8 @@ local function flatten(tbl, sep, out, segs, prefix, seg_count)
       flatten(v, sep, out, segs, path, seg_count + 1)
     else
       local prev = segs[path]
-      if prev == nil or seg_count > prev then
+      v = scalar(v)
+      if v ~= nil and (prev == nil or seg_count > prev) then
         segs[path] = seg_count
         out[path] = v
       end
@@ -45,13 +62,23 @@ M.flatten = flatten
 
 local function decode_json(raw, cfg)
   local ok, decoded = pcall(vim.json.decode, raw)
-  if not ok or type(decoded) ~= 'table' then
-    return nil, 'failed to parse JSON'
+  if not ok then
+    return nil, 'invalid JSON: ' .. tostring(decoded)
   end
+  if type(decoded) ~= 'table' then
+    return nil, 'expected a JSON object at the top level'
+  end
+  local out = {}
   if cfg.key_style ~= 'nested' then
-    return decoded
+    -- Flat: top-level scalars only. A nested object here means a
+    -- key_style mismatch (:checkhealth reports it); showing it as
+    -- "table: 0x…" would be noise, so it reads as missing instead.
+    for k, v in pairs(decoded) do
+      out[k] = scalar(v)
+    end
+    return out
   end
-  local out, segs = {}, {}
+  local segs = {}
   flatten(decoded, cfg.separator or '.', out, segs, '', 1)
   return out
 end
@@ -102,22 +129,23 @@ end
 -- somewhere useful).
 local function json_find_line(lines, key, cfg)
   local positions = json_leaf_positions(lines)
-  local lookup = { positions[key] }
   local segs = vim.split(key, cfg.separator or '.', { plain = true })
+  local leaf = segs[#segs]
   if #segs > 1 then
-    table.insert(lookup, 1, positions[table.concat(segs, '\1')])
-  end
-  for _, pos in ipairs(lookup) do
+    local pos = positions[table.concat(segs, '\1')]
     if pos then
-      return pos.lnum, pos.col
+      return pos.lnum, pos.col, #leaf + 2
     end
   end
-  local leaf = segs[#segs]
+  local pos = positions[key]
+  if pos then
+    return pos.lnum, pos.col, #key + 2
+  end
   local pat = '"' .. pattern_escape(leaf) .. '"'
   for lnum, line in ipairs(lines) do
     local col = line:find(pat)
     if col then
-      return lnum, col
+      return lnum, col, #leaf + 2
     end
   end
   return nil
@@ -220,13 +248,27 @@ local function decode_arb(raw, cfg)
   return out
 end
 
--- PO line lookup: the msgid line (multiline msgids anchored at their
--- `msgid ""` start are not matched — the jump falls back to the file top).
+-- PO line lookup: the line of the matching msgid, comparing the unescaped
+-- msgid including continuation lines (multiline `msgid ""` entries are
+-- found too). The flash covers the first line's literal.
 local function po_find_line(lines, key, _cfg)
-  local pat = '^%s*msgid%s+"' .. pattern_escape(key) .. '"%s*$'
   for lnum, line in ipairs(lines) do
-    if line:find(pat) then
-      return lnum, (line:find('"'))
+    local body = line:match('^%s*msgid%s+"(.*)"%s*$')
+    if body then
+      local parts = { body }
+      local i = lnum + 1
+      while lines[i] do
+        local cont = lines[i]:match('^%s*"(.*)"%s*$')
+        if not cont then
+          break
+        end
+        parts[#parts + 1] = cont
+        i = i + 1
+      end
+      if po_unescape(table.concat(parts)) == key then
+        local col = line:find('"')
+        return lnum, col, #body + 2
+      end
     end
   end
   return nil

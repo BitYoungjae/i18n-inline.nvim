@@ -155,7 +155,12 @@ return function(t, eq, ok_, make_project)
     eq(merged.filetypes, { 'dart' })
     eq(merged.fallback_style, 'none')
     eq(merged.key_style, 'flat')
-    ok_(vim.tbl_contains(merged.patterns, 'l10n%.([%w_]+)'))
+    -- context.l10n.key resolves; the l10n.dart import line is not a lookup
+    local keys = {}
+    for _, m in ipairs(scan.scan("import 'package:app/l10n/l10n.dart';\nText(context.l10n.helloWorld);\nfinal l10n = context.l10n;\nl10n.bye;", merged)) do
+      keys[#keys + 1] = m.key
+    end
+    eq(keys, { 'helloWorld', 'bye' })
     eq(merged.check.extensions, { 'dart' })
   end)
 
@@ -390,7 +395,7 @@ return function(t, eq, ok_, make_project)
     eq(merged.patterns, { 'only-mine' })
     eq(merged.filetypes, { 'typescript' })
     -- dict keys still merge
-    eq(merged.hl.match, 'Comment')
+    eq(merged.hl.match, 'I18nInlineValue')
   end)
 
   t('config: deprecated keymap flows into keymaps.hover (R6.1)', function()
@@ -733,23 +738,38 @@ return function(t, eq, ok_, make_project)
       '}'
     }
     local find = formats.registry.json.find_line
-    eq({ find(lines, 'flat', { separator = '.' }) }, { 2, 3 })
+    -- (lnum, col, len): len covers the quoted token on that line — the
+    -- leaf segment for nested paths, not the whole dotted key
+    eq({ find(lines, 'flat', { separator = '.' }) }, { 2, 3, 6 })
     -- nested wins over the literal dotted key (decode collision policy)
-    eq({ find(lines, 'a.b', { separator = '.' }) }, { 5, 5 })
+    eq({ find(lines, 'a.b', { separator = '.' }) }, { 5, 5, 3 })
     -- deep leaf via the raw-occurrence fallback (inline object line)
-    eq({ find(lines, 'a.deep.leaf', { separator = '.' }) }, { 6, 15 })
-    eq({ find(lines, 'sibling', { separator = '.' }) }, { 9, 3 })
+    eq({ find(lines, 'a.deep.leaf', { separator = '.' }) }, { 6, 15, 6 })
+    eq({ find(lines, 'sibling', { separator = '.' }) }, { 9, 3, 9 })
     ok_(find(lines, 'absent', { separator = '.' }) == nil)
     -- minified: everything on one line — fallback lands on the leaf column
     local mini = { '{"x":{"y":"v"},"q":"w"}' }
-    eq({ find(mini, 'x.y', { separator = '.' }) }, { 1, 7 })
-    eq({ find(mini, 'q', { separator = '.' }) }, { 1, 16 })
+    eq({ find(mini, 'x.y', { separator = '.' }) }, { 1, 7, 3 })
+    eq({ find(mini, 'q', { separator = '.' }) }, { 1, 16, 3 })
   end)
 
   t('formats: po find_line anchors the msgid', function()
-    local lines = { 'msgid "Save changes"', 'msgstr "변경사항 저장"', '', 'msgid "Other"' }
+    local lines = {
+      'msgid "Save changes"',
+      'msgstr "변경사항 저장"',
+      '',
+      'msgid ""',
+      '"long "',
+      '"key"',
+      'msgstr "긴 값"',
+      'msgid "say \\"hi\\""',
+    }
     local find = formats.registry.po.find_line
-    eq({ find(lines, 'Save changes', {}) }, { 1, 7 })
+    eq({ find(lines, 'Save changes', {}) }, { 1, 7, 14 })
+    -- multiline msgid: continuation lines are joined before comparing
+    eq({ find(lines, 'long key', {}) }, { 4, 7, 2 })
+    -- escaped quotes compare unescaped
+    eq({ find(lines, 'say "hi"', {}) }, { 8, 7, 12 })
     ok_(find(lines, 'Absent', {}) == nil)
   end)
 

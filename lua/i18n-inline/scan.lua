@@ -241,24 +241,19 @@ function M.normalize_placeholders(s)
   return (s:gsub('%z', '%%'))
 end
 
--- Classify a match against a translation key table.
+-- Classify a match against a translation key table (a decoded, flat
+-- key -> string map; see formats.lua).
 -- Returns 'match' | 'mismatch' | 'missing' | 'novalue', the display value,
 -- and for 'missing' whether the key exists in the source language (a
 -- translation gap rather than an unknown key).
 function M.status(m, keys, cfg, source_keys)
   cfg = cfg or {}
-  local v = keys and keys[m.key] or nil
-  if v == nil or v == vim.NIL then
-    if source_keys then
-      local sv = source_keys[m.key]
-      if sv ~= nil and sv ~= vim.NIL then
-        return 'missing', nil, true
-      end
+  local v = keys and keys[m.key]
+  if v == nil then
+    if source_keys and source_keys[m.key] ~= nil then
+      return 'missing', nil, true
     end
     return 'missing', nil
-  end
-  if type(v) ~= 'string' then
-    v = tostring(v)
   end
   if m.fb == nil or cfg.compare == 'none' then
     return 'novalue', v

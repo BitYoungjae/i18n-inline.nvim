@@ -70,7 +70,7 @@ end
 -- ===== module loads =====
 
 t('modules load', function()
-  for _, m in ipairs({ 'config', 'util', 'formats', 'presets', 'scan', 'resolve', 'preview', 'hover', 'jump', 'check' }) do
+  for _, m in ipairs({ 'config', 'util', 'formats', 'presets', 'scan', 'resolve', 'preview', 'hover', 'jump', 'check', 'health' }) do
     ok_(type(require('i18n-inline.' .. m)) == 'table', 'failed to load i18n-inline.' .. m)
   end
 end)
@@ -165,7 +165,8 @@ end)
 
 t('scan.status classification', function()
   local scan = require('i18n-inline.scan')
-  local keys = { same = 'v', diff = 'x', num = 7 }
+  -- decoded maps are string-valued (formats.lua stringifies numbers)
+  local keys = { same = 'v', diff = 'x', num = '7' }
   eq({ scan.status({ key = 'same', fb = 'v' }, keys) }, { 'match', 'v' })
   eq({ scan.status({ key = 'diff', fb = 'y' }, keys) }, { 'mismatch', 'x' })
   eq({ scan.status({ key = 'absent', fb = 'y' }, keys) }, { 'missing', nil })
@@ -306,11 +307,11 @@ t('preview: renders virtual text with per-status styling', function()
     return a.row < b.row
   end)
   eq(virt[1].text, '  동일')
-  eq(virt[1].hl, 'Comment')
+  eq(virt[1].hl, 'I18nInlineValue')
   eq(virt[2].text, '  ≠ 파일 값')
-  eq(virt[2].hl, 'DiagnosticWarn')
+  eq(virt[2].hl, 'I18nInlineMismatch')
   eq(virt[3].text, '  ✗ key not found')
-  eq(virt[3].hl, 'DiagnosticError')
+  eq(virt[3].hl, 'I18nInlineMissing')
   eq(virt[4].text, '  값 있음')
   eq(underlines, 1) -- only the mismatch gets underlined
 
@@ -464,6 +465,10 @@ end)
 -- ===== generalization (R1-R7: nested keys, namespaces, formats, presets) =====
 
 dofile(here .. '/generalization.lua')(t, eq, ok_, make_project)
+
+-- ===== review-pass regressions (one per reproduced defect) =====
+
+dofile(here .. '/regressions.lua')(t, eq, ok_, make_project, vim.fs.normalize(vim.fn.fnamemodify(here .. '/..', ':p')))
 
 -- ===== real-repo smoke (optional, I18N_SMOKE_REPO) =====
 

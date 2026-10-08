@@ -1,8 +1,11 @@
 -- Buffer preview: scan -> classify -> render extmarks (inline virtual text,
 -- plus an underline on mismatched fallback strings).
 --
--- Per-buffer state: { project, matches, virt_ids, hl_ids, timer }
+-- Per-buffer state: { project, matches, tick, virt_ids, hl_ids, timer, … }
 -- Each match extends the scan result with row/col positions and status/value.
+-- `tick` is the changedtick the matches were computed at; hover and jump go
+-- through current_match(), which re-scans first when the buffer changed
+-- since (or was never scanned), so they never act on stale positions.
 --
 -- Inline display mode is runtime-toggleable (:I18nToggle,
 -- <Plug>(i18n-inline-toggle)): it cycles 'always' -> 'problems' -> 'never'
@@ -47,18 +50,63 @@ function M.state(buf)
   return state[real_buf(buf)]
 end
 
--- The match spanning `row` in `buf`, if any (shared by hover and jump).
-function M.match_at(buf, row)
+-- Distance from (row, col) to a match's span: 0 inside it, otherwise the
+-- column gap on the row it shares; nil when the match does not touch `row`.
+local function distance(m, row, col)
+  if row < m.row_start or row > m.row_end then
+    return nil
+  end
+  if row == m.row_start and col < m.col_start then
+    return m.col_start - col
+  end
+  if row == m.row_end and col > m.col_end then
+    return col - m.col_end
+  end
+  return 0
+end
+
+-- The match under (row, col) in `buf` — the one containing the position,
+-- else the nearest one on that row (several calls can share a line:
+-- `{t('a')} {t('b')}`). Without `col`, the first match on the row.
+function M.match_at(buf, row, col)
   local st = state[real_buf(buf)]
   if not st or not st.matches then
     return nil
   end
+  local best, best_d
   for _, m in ipairs(st.matches) do
-    if row >= m.row_start and row <= m.row_end then
-      return m
+    local d = distance(m, row, col or 0)
+    if d and (not best_d or d < best_d) then
+      best, best_d = m, d
+      if d == 0 then
+        break
+      end
     end
   end
-  return nil
+  return best
+end
+
+-- The match under the cursor of the current window, plus its project.
+-- Re-scans first when the buffer changed since the last refresh (edits
+-- inside the debounce window, insert-mode changes) or was never scanned.
+-- Returns match, project — or nil, nil, message when there is nothing to
+-- act on.
+function M.current_match()
+  local buf = api.nvim_get_current_buf()
+  local st = state[buf]
+  if not st or st.tick ~= api.nvim_buf_get_changedtick(buf) then
+    M.refresh(buf)
+    st = state[buf]
+  end
+  if not st or not st.project then
+    return nil, nil, 'no translation project for this buffer'
+  end
+  local cursor = api.nvim_win_get_cursor(0)
+  local m = M.match_at(buf, cursor[1] - 1, cursor[2])
+  if not m then
+    return nil, nil, 'no i18n call under the cursor'
+  end
+  return m, st.project
 end
 
 -- Cycle the inline display mode for the session and re-render.
@@ -78,10 +126,6 @@ function M.toggle()
       M.refresh(buf)
     end
   end
-  return show_override
-end
-
-function M.show_mode()
   return show_override
 end
 
@@ -118,7 +162,8 @@ function M.schedule(buf)
     st.timer = uv.new_timer()
   end
   st.timer:stop()
-  st.timer:start(config.get().debounce_ms, 0, vim.schedule_wrap(function()
+  local cfg = st.project and st.project.cfg or config.get()
+  st.timer:start(cfg.debounce_ms, 0, vim.schedule_wrap(function()
     M.refresh(buf)
   end))
 end
@@ -140,6 +185,7 @@ function M.clear(buf)
     clear_marks(buf, st)
     st.matches = nil
     st.project = nil
+    st.tick = nil
     M._unset_keymaps(buf, st)
   end
 end
@@ -258,6 +304,7 @@ function M._unset_keymaps(buf, st)
     end
     st.set_keymaps = nil
   end
+  st.keymap_sig = nil -- so the next resolve re-applies them
 end
 
 local function apply_keymaps(buf, st, cfg)
@@ -310,6 +357,7 @@ function M.refresh(buf)
     source_keys = resolve.ensure_lang(project, cfg.source_lang)
   end
 
+  local tick = api.nvim_buf_get_changedtick(buf)
   local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
   local text = table.concat(lines, '\n')
   local offsets = util.build_line_offsets(text)
@@ -331,12 +379,14 @@ function M.refresh(buf)
   end
   st.project = project
   st.matches = matches
+  st.tick = tick
 
   apply_keymaps(buf, st, cfg)
   render(buf, st, cfg)
 end
 
--- A file was saved: refresh whatever it affects.
+-- A file was saved: refresh whatever it affects. `path` must be absolute
+-- (the buffer name — the autocmd's <afile> can be relative to cwd).
 function M.on_file_saved(path)
   local name = vim.fs.basename(path) or ''
   -- Per-project config changed: drop all project caches and re-resolve.
@@ -344,7 +394,9 @@ function M.on_file_saved(path)
     resolve.reset()
     for buf in pairs(state) do
       resolve.forget(buf)
-      M.refresh(buf)
+      if api.nvim_buf_is_valid(buf) then
+        M.refresh(buf)
+      end
     end
     return
   end

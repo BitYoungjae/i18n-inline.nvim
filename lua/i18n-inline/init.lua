@@ -9,11 +9,15 @@
 --     value for the key under the cursor.
 --   - <Plug>(i18n-inline-toggle) / :I18nToggle: hide/show inline previews
 --     for the session (popover and audit keep working).
+--   - <Plug>(i18n-inline-jump) / :I18nJump: open the translation file at
+--     the key under the cursor.
 --   - :I18nCheck: project-wide audit into the quickfix list.
 --
 -- No default keymaps ship (R6.7): map the <Plug> mappings or set
--- `keymaps = { hover = …, toggle = … }`. Keymaps are applied buffer-locally
--- per project, from setup() and the project file alike.
+-- `keymaps = { hover = …, toggle = …, jump = … }`. Keymaps are applied
+-- buffer-locally per project, from setup() and the project file alike.
+-- Commands and <Plug> mappings live in plugin/i18n-inline.lua and work
+-- without setup(); setup() adds configuration and automatic rendering.
 --
 -- Configuration lives in a `.i18n-inline.json` at each repository's root,
 -- with `setup(opts)` providing user-level defaults. See README.
@@ -55,45 +59,23 @@ function M.setup(opts)
     end,
   })
 
-  -- Any file saved: project config, or a translation file in a known format
-  -- (json today, po, …) -> invalidate caches, refresh.
-  api.nvim_create_autocmd('BufWritePost', {
+  -- Buffer renamed (:saveas, :file) -> its project may differ
+  api.nvim_create_autocmd('BufFilePost', {
     group = group,
     callback = function(ev)
-      preview.on_file_saved(ev.file)
+      require('i18n-inline.resolve').forget(ev.buf)
+      preview.schedule(ev.buf)
     end,
   })
 
-  -- Commands
-  api.nvim_create_user_command('I18nCheck', function()
-    require('i18n-inline.check').check()
-  end, { desc = 'i18n: audit drift project-wide (quickfix)' })
-
-  api.nvim_create_user_command('I18nHover', function()
-    require('i18n-inline.hover').hover()
-  end, { desc = 'i18n: popover with per-language translations for the key under cursor' })
-
-  api.nvim_create_user_command('I18nToggle', function()
-    local mode = require('i18n-inline.preview').toggle()
-    vim.notify(('[i18n-inline] inline previews: %s'):format(mode), vim.log.levels.INFO)
-  end, { desc = 'i18n: cycle inline display (always/problems/never) for the session' })
-
-  api.nvim_create_user_command('I18nJump', function(ev)
-    require('i18n-inline.jump').jump({ bang = ev.bang, lang = ev.args ~= '' and ev.args or nil })
-  end, {
-    bang = true,
-    nargs = '?',
-    complete = function()
-      local st = require('i18n-inline.preview').state(api.nvim_get_current_buf())
-      local project = st and st.project
-      if not project then
-        return {}
-      end
-      local langs = vim.tbl_keys(project.langs)
-      table.sort(langs)
-      return langs
+  -- Any file saved: project config, or a translation file in a known format
+  -- (json, arb, po) -> invalidate caches, refresh. The buffer name, not
+  -- ev.file: <afile> is relative to cwd when the file was opened that way.
+  api.nvim_create_autocmd('BufWritePost', {
+    group = group,
+    callback = function(ev)
+      preview.on_file_saved(api.nvim_buf_get_name(ev.buf))
     end,
-    desc = 'i18n: open the translation file at the key under the cursor (<lang> = specific language, ! = all languages)',
   })
 
   -- Handle buffers opened before setup() ran (lazy loading)
@@ -116,7 +98,7 @@ end
 
 function M.toggle()
   local mode = require('i18n-inline.preview').toggle()
-  vim.notify(('[i18n-inline] inline previews: %s'):format(mode), vim.log.levels.INFO)
+  require('i18n-inline.util').notify(('inline previews: %s'):format(mode))
   return mode
 end
 

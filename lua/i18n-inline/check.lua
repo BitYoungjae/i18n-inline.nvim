@@ -21,44 +21,6 @@ local M = {}
 local generation = 0
 local BATCH = 40
 
-local function walk_files(root, extensions, excludes)
-  local ext_set = {}
-  for _, e in ipairs(extensions) do
-    ext_set[e:lower()] = true
-  end
-  local excl_set = {}
-  for _, d in ipairs(excludes) do
-    excl_set[d] = true
-  end
-  local files = {}
-  local function walk(dir)
-    local fs = vim.uv.fs_scandir(dir)
-    if not fs then
-      return
-    end
-    while true do
-      local name, ftype = vim.uv.fs_scandir_next(fs)
-      if not name then
-        break
-      end
-      local path = dir .. '/' .. name
-      if ftype == 'directory' then
-        if not excl_set[name] then
-          walk(path)
-        end
-      elseif ftype == 'file' then
-        local ext = name:match('%.([%w]+)$')
-        if ext and ext_set[ext:lower()] then
-          files[#files + 1] = path
-        end
-      end
-    end
-  end
-  walk(root)
-  table.sort(files)
-  return files
-end
-
 local function progress(msg)
   api.nvim_echo({ { msg, 'Comment' } }, false, {})
 end
@@ -103,17 +65,19 @@ local function lang_gaps(project, ignored)
   if not src_keys then
     return {}, { src }
   end
+  local src_sorted = vim.tbl_keys(src_keys)
+  table.sort(src_sorted)
   local items, unreadable = {}, {}
-  for lang, path in pairs(project.langs) do
+  for _, lang in ipairs(resolve.sorted_langs(project)) do
     if lang ~= src then
       local keys = resolve.ensure_lang(project, lang)
       if not keys then
         unreadable[#unreadable + 1] = lang
       else
-        for k, v in pairs(src_keys) do
-          if v ~= vim.NIL and keys[k] == nil and not ignored(k) then
+        for _, k in ipairs(src_sorted) do
+          if keys[k] == nil and not ignored(k) then
             items[#items + 1] = {
-              filename = path,
+              filename = project.langs[lang],
               lnum = 1, -- keep filename intact in quickfix (no line to point at)
               text = ('missing key :%s — present in %s'):format(k, src),
               _kind = 'gap',
@@ -152,14 +116,27 @@ local function finish(project, qf_items, used_keys, keys, elapsed_ms)
     vim.cmd('copen')
   end
 
-  local summary = ('[i18n-inline] %s — %d mismatches, %d missing keys, %d missing translations (%.1fs)')
-    :format(project.root, mismatch_n, missing_n, gap_n, elapsed_ms / 1000)
-  api.nvim_echo({ { summary, (mismatch_n + missing_n + gap_n) > 0 and 'WarningMsg' or 'None' } }, false, {})
+  -- With no UI attached (CI, an agent's headless run) nobody reads the
+  -- screen: keep the report in :messages and list every unused key. With a
+  -- UI, history would turn the consecutive lines into a hit-enter prompt.
+  local headless = #api.nvim_list_uis() == 0
+
+  local function count(n, one, many)
+    return ('%d %s'):format(n, n == 1 and one or many)
+  end
+  local summary = ('[i18n-inline] %s — %s, %s, %s (%.1fs)'):format(
+    vim.fn.fnamemodify(project.root, ':~'),
+    count(mismatch_n, 'mismatch', 'mismatches'),
+    count(missing_n, 'missing key', 'missing keys'),
+    count(gap_n, 'missing translation', 'missing translations'),
+    elapsed_ms / 1000
+  )
+  api.nvim_echo({ { summary, (mismatch_n + missing_n + gap_n) > 0 and 'WarningMsg' or 'None' } }, headless, {})
   if #unreadable > 0 then
     table.sort(unreadable)
     api.nvim_echo({
       { ('[i18n-inline] could not read languages: %s'):format(table.concat(unreadable, ', ')), 'WarningMsg' },
-    }, false, {})
+    }, headless, {})
   end
 
   -- Unused keys are audited against the source language when configured
@@ -179,18 +156,24 @@ local function finish(project, qf_items, used_keys, keys, elapsed_ms)
   end
   if #unused > 0 then
     table.sort(unused)
+    local limit = headless and #unused or 10 -- ten fit a message line
     local shown = {}
-    for i = 1, math.min(#unused, 10) do
+    for i = 1, math.min(#unused, limit) do
       shown[#shown + 1] = unused[i]
     end
     local against = cfg.source_lang or cfg.preview_lang
     api.nvim_echo({
       {
-        ('[i18n-inline] %d keys in "%s" are not referenced by any scan: %s%s')
-          :format(#unused, against, table.concat(shown, ', '), #unused > 10 and ' …' or ''),
+        ('[i18n-inline] %d %s in "%s" not referenced by any scan: %s%s'):format(
+          #unused,
+          #unused == 1 and 'key' or 'keys',
+          against,
+          table.concat(shown, ', '),
+          #unused > limit and ' …' or ''
+        ),
         'Comment',
       },
-    }, false, {})
+    }, headless, {})
   end
 end
 
@@ -198,14 +181,14 @@ function M.check(buf)
   buf = buf or api.nvim_get_current_buf()
   local project = resolve.project_for(buf) or resolve.project_from(vim.uv.cwd() or '.')
   if not project then
-    vim.notify('[i18n-inline] no translation project found, cannot audit', vim.log.levels.ERROR)
+    util.notify('no translation project found, cannot audit', vim.log.levels.ERROR)
     return
   end
   local pcfg = project.cfg
 
   local keys, err = resolve.ensure_lang(project, pcfg.preview_lang)
   if not keys then
-    vim.notify('[i18n-inline] ' .. err, vim.log.levels.ERROR)
+    util.notify(err, vim.log.levels.ERROR)
     return
   end
   local source_keys = nil
@@ -216,7 +199,7 @@ function M.check(buf)
   local root = project.root
   generation = generation + 1
   local my_gen = generation
-  local files = walk_files(root, pcfg.check.extensions, pcfg.check.exclude_dirs)
+  local files = util.walk_files(root, pcfg.check.extensions, pcfg.check.exclude_dirs)
   local t0 = vim.uv.hrtime()
 
   local qf_items = {}
@@ -231,10 +214,8 @@ function M.check(buf)
     while idx < until_i do
       idx = idx + 1
       local path = files[idx]
-      local fh = io.open(path, 'r')
-      if fh then
-        local text = fh:read('*a')
-        fh:close()
+      local text = util.read_file(path)
+      if text then
         local offsets = util.build_line_offsets(text)
         for _, m in ipairs(scan.scan(text, pcfg)) do
           used_keys[m.key] = true
@@ -243,13 +224,15 @@ function M.check(buf)
             local row, col = util.byte_to_pos(offsets, m.call_s)
             local desc
             if status == 'mismatch' then
-              desc = ('mismatch :%s — code %q vs %s %q')
-                :format(m.key, util.truncate(m.fb, 60), pcfg.preview_lang, util.truncate(value or '', 60))
+              desc = ('mismatch :%s — code %s vs %s %s')
+                :format(m.key, util.quote(m.fb), pcfg.preview_lang, util.quote(value))
             elseif in_source then
               desc = ('missing in %s :%s — present in %s')
                 :format(pcfg.preview_lang, m.key, pcfg.source_lang)
+            elseif m.fb then
+              desc = ('missing key :%s — fallback %s'):format(m.key, util.quote(m.fb))
             else
-              desc = ('missing key :%s — fallback %q'):format(m.key, util.truncate(m.fb or '', 60))
+              desc = ('missing key :%s'):format(m.key)
             end
             qf_items[#qf_items + 1] = {
               filename = path,
@@ -271,7 +254,7 @@ function M.check(buf)
     end
   end
 
-  progress(('[i18n-inline] auditing %d files…'):format(#files))
+  progress(('[i18n-inline] auditing %d %s…'):format(#files, #files == 1 and 'file' or 'files'))
   vim.schedule(step)
 end
 
