@@ -154,7 +154,7 @@ local function each_match(text, pat, fn)
       end
       return
     end
-    if not s then
+    if not s or not e then
       return
     end
     init = math.max(e, s) + 1

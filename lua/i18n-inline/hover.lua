@@ -50,7 +50,7 @@ end
 
 function M.hover()
   local m, project, err = preview.current_match()
-  if not m then
+  if not m or not project then
     util.notify(err)
     return
   end
