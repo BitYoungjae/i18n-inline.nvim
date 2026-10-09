@@ -22,6 +22,8 @@
 -- extension (or the `format` config key) and the mtime+size cache contract
 -- applies unchanged.
 
+local util = require('i18n-inline.util')
+
 local M = {}
 
 -- Leaf value -> display string, or nil for values that are not messages
@@ -83,10 +85,6 @@ local function decode_json(raw, cfg)
   return out
 end
 
-local function pattern_escape(s)
-  return (s:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
-end
-
 -- Map every leaf of a pretty-printed JSON object tree to its position,
 -- joining the structural path with \1 (unambiguous even when keys contain
 -- the separator). Indentation tracks nesting: closing brackets pop every
@@ -141,7 +139,7 @@ local function json_find_line(lines, key, cfg)
   if pos then
     return pos.lnum, pos.col, #key + 2
   end
-  local pat = '"' .. pattern_escape(leaf) .. '"'
+  local pat = '"' .. util.pattern_escape(leaf) .. '"'
   for lnum, line in ipairs(lines) do
     local col = line:find(pat)
     if col then

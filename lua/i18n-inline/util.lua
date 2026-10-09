@@ -28,12 +28,38 @@ function M.has_wildcard(s)
   return s:find('[%*%?]') ~= nil
 end
 
+-- `s` as a Lua pattern that matches it literally.
+function M.pattern_escape(s)
+  return (s:gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
+end
+
+-- Glob -> anchored Lua pattern: `*` becomes `star`, `?` becomes `one`, and
+-- everything else matches literally.
+function M.glob_to_pattern(glob, star, one)
+  local body = glob:gsub('.', function(c)
+    if c == '*' then
+      return star
+    elseif c == '?' then
+      return one
+    end
+    return M.pattern_escape(c)
+  end)
+  return '^' .. body .. '$'
+end
+
 -- One path segment of a glob -> anchored Lua pattern; `*` and `?` never
 -- cross a '/'.
 local function segment_pattern(seg)
-  local escaped = seg:gsub('[%^%$%(%)%%%.%[%]%+%-]', '%%%0')
-  escaped = escaped:gsub('%*', '[^/]*'):gsub('%?', '[^/]')
-  return '^' .. escaped .. '$'
+  return M.glob_to_pattern(seg, '[^/]*', '[^/]')
+end
+
+-- `list` as a set (value -> true).
+function M.set(list)
+  local out = {}
+  for _, v in ipairs(list or {}) do
+    out[v] = true
+  end
+  return out
 end
 
 M.segment_pattern = segment_pattern

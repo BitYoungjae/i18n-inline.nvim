@@ -51,6 +51,15 @@ function M.state(buf)
   return state[real_buf(buf)]
 end
 
+local function ensure_state(buf)
+  local st = state[buf]
+  if not st then
+    st = {}
+    state[buf] = st
+  end
+  return st
+end
+
 -- Distance from (row, col) to a match's span: 0 inside it, otherwise the
 -- column gap on the row it shares; nil when the match does not touch `row`.
 local function distance(m, row, col)
@@ -154,11 +163,7 @@ function M.schedule(buf)
   if not api.nvim_buf_is_valid(buf) then
     return
   end
-  local st = state[buf]
-  if not st then
-    st = {}
-    state[buf] = st
-  end
+  local st = ensure_state(buf)
   if not st.timer then
     st.timer = uv.new_timer()
   end
@@ -382,11 +387,7 @@ function M.refresh(buf)
     resolve.classify(view, m)
   end
 
-  local st = state[buf]
-  if not st then
-    st = {}
-    state[buf] = st
-  end
+  local st = ensure_state(buf)
   st.project = project
   st.matches = matches
   st.tick = tick

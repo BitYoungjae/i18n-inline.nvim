@@ -41,6 +41,8 @@
 --     str_e  = byte offset of the fallback's closing quote,
 --   }
 
+local util = require('i18n-inline.util')
+
 local M = {}
 
 -- Parse the string literal starting at `start` (a quote character).
@@ -170,13 +172,7 @@ end
 
 function M.scan(text, cfg)
   local patterns = cfg.patterns or {}
-  local aliases = nil
-  if cfg.aliases then
-    aliases = {}
-    for _, a in ipairs(cfg.aliases) do
-      aliases[a] = true
-    end
-  end
+  local aliases = cfg.aliases and util.set(cfg.aliases)
   local bindings = M.extract_bindings(text, cfg.namespace_patterns)
   local sep = cfg.separator or '.'
 

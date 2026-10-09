@@ -35,21 +35,12 @@ local function progress(msg)
   api.nvim_echo({ { msg, 'Comment' } }, false, {})
 end
 
--- Glob (only * and ? special) -> anchored Lua pattern. Magic characters
--- are escaped with '%' (Lua pattern syntax — vim.fn.escape's backslashes
--- would be wrong here); * and ? stay for the wildcard pass.
-local function glob_to_pattern(glob)
-  local escaped = glob:gsub('[%^%$%(%)%%%.%[%]%+%-%_#]', '%%%0')
-  escaped = escaped:gsub('%*', '.*'):gsub('%?', '.')
-  return '^' .. escaped .. '$'
-end
-
-M.glob_to_pattern = glob_to_pattern
-
+-- check.ignore globs -> predicate over keys. Keys are not paths: `*` and
+-- `?` match any character, separators included.
 local function compile_ignores(globs)
   local pats = {}
   for _, g in ipairs(globs or {}) do
-    pats[#pats + 1] = glob_to_pattern(g)
+    pats[#pats + 1] = util.glob_to_pattern(g, '.*', '.')
   end
   return function(key)
     for _, p in ipairs(pats) do
@@ -62,6 +53,11 @@ local function compile_ignores(globs)
 end
 
 M.compile_ignores = compile_ignores
+
+-- "1 key", "2 keys"
+local function count(n, one, many)
+  return ('%d %s'):format(n, n == 1 and one or many)
+end
 
 local function labels(catalogs)
   local out = {}
@@ -160,19 +156,16 @@ local function report_unused(project, groups, headless)
     end
     return table.concat(out, ', ') .. (#list > limit and ' …' or '')
   end
-  local function count(n)
-    return ('%d %s'):format(n, n == 1 and 'key' or 'keys')
-  end
 
   if #project.catalogs == 1 then
     local g = groups[1]
     -- ten fit a message line; a headless run keeps all of them
     echo(('[i18n-inline] %s in "%s" not referenced by any scan: %s')
-      :format(count(#g.keys), g.lang, shown(g.keys, headless and #g.keys or 10)))
+      :format(count(#g.keys, 'key', 'keys'), g.lang, shown(g.keys, headless and #g.keys or 10)))
   elseif headless then
     for _, g in ipairs(groups) do
       echo(('[i18n-inline] %s in "%s" of %s not referenced by any scan: %s')
-        :format(count(#g.keys), g.lang, g.catalog.label, shown(g.keys, #g.keys)))
+        :format(count(#g.keys, 'key', 'keys'), g.lang, g.catalog.label, shown(g.keys, #g.keys)))
     end
   else
     -- one line on screen (more would stop at a hit-enter prompt)
@@ -185,7 +178,7 @@ local function report_unused(project, groups, headless)
       end
     end
     echo(('[i18n-inline] %s not referenced by any scan: %s%s')
-      :format(count(total), table.concat(parts, '; '), #parts < #groups and ' …' or ''))
+      :format(count(total, 'key', 'keys'), table.concat(parts, '; '), #parts < #groups and ' …' or ''))
   end
 end
 
@@ -220,9 +213,6 @@ local function finish(project, run, elapsed_ms)
   -- UI, history would turn the consecutive lines into a hit-enter prompt.
   local headless = #api.nvim_list_uis() == 0
 
-  local function count(n, one, many)
-    return ('%d %s'):format(n, n == 1 and one or many)
-  end
   local missing = count(missing_n, 'missing key', 'missing keys')
   if run.elsewhere_n > 0 then
     missing = ('%s (%d only in another catalog)'):format(missing, run.elsewhere_n)

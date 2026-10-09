@@ -91,13 +91,7 @@ end
 -- Discover languages from translation files in dir (ko.json / ko.po -> "ko").
 -- `only` (the `languages` option) restricts the result when given.
 local function discover_langs(dir, only)
-  local allowed
-  if only then
-    allowed = {}
-    for _, l in ipairs(only) do
-      allowed[l] = true
-    end
-  end
+  local allowed = only and util.set(only)
   local langs = {}
   local fs = uv.fs_scandir(dir)
   if not fs then
@@ -122,7 +116,7 @@ end
 -- Literal template text -> Lua pattern source ('%%' in a template is a
 -- literal percent sign).
 local function template_literal(s)
-  return (s:gsub('%%%%', '%%'):gsub('[%^%$%(%)%%%.%[%]%*%+%-%?]', '%%%0'))
+  return util.pattern_escape((s:gsub('%%%%', '%%')))
 end
 
 -- Discover languages from the files a file_template matches
@@ -148,13 +142,7 @@ local function discover_template_langs(dir, template, only)
   local before, after = segs[at]:match('^(.-)%%s(.*)$')
   local pat = '^' .. template_literal(before) .. '(.+)' .. template_literal(after) .. '$'
   local rest = table.concat(segs, '/', at + 1)
-  local allowed
-  if only then
-    allowed = {}
-    for _, l in ipairs(only) do
-      allowed[l] = true
-    end
-  end
+  local allowed = only and util.set(only)
   local fs = uv.fs_scandir(parent)
   while fs do
     local name, ftype = uv.fs_scandir_next(fs)
