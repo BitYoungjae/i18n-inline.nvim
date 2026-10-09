@@ -331,6 +331,48 @@ scope, buffer → nearest project file". The decisions:
   file. Audit time is unchanged (cljs-app, 1,223 files: 124 → 129 ms,
   within noise).
 
+Second review pass (2026-10-09), started from inline values piling up
+(`제품명  제품명  제품명`) and drifting into the middle of keywords. Same
+rules: each defect reproduced first and pinned in `tests/regressions.lua`
+(each test fails against the previous code); the scan output over
+boxhero-web (4,497 calls) is identical before and after, and the scan
+time unchanged (115 vs 116 ms).
+
+- **Marks go with the state that tracks them.** `:edit`/`:edit!` fire
+  BufUnload, which dropped the buffer's state, but the extmarks survive the
+  re-read: every reload added a full set beside untracked ones that then
+  drifted with edits. `unload()` clears them, and a render without ids to
+  reuse starts from an empty namespace.
+- **Marks stay on the line.** A pattern ending on the newline (a trailing
+  `%s`) put the mark one column past the line end and raised from the
+  debounce timer on every edit; the column is clamped.
+- **Turning `underline_mismatch` off removes drawn underlines** (they were
+  left untracked).
+- **Scanning cannot hang or raise on user patterns.** A pattern that
+  matches the empty string looped forever (Neovim had to be killed); an
+  empty match now moves on one byte. A malformed pattern raised from every
+  refresh and stopped `:I18nCheck` midway; it is reported once and matches
+  nothing. Lua only notices a malformed pattern when the matcher reaches
+  the bad part, so config validation cannot catch it.
+- **Fallbacks:** `\uXXXX` (surrogate pairs too), `\u{…}`, `\xHH`, `\r`, `\b`,
+  `\f`, `\v`, `\0` decode, so `"caf\u00e9"` matches `café`; a literal must be
+  the whole argument (`t('k', 'a' + b)` and Clojure's `'sym` are not
+  defaults). The default Clojure patterns take the whole keyword
+  (`:valid?`, `:a->b`).
+- **`.po`:** a `#, fuzzy` flag survives the `#|` lines msgmerge writes after
+  it; `msgstr[n > 0]` continuations no longer append to `msgstr[0]`; "fuzzy"
+  in a translator comment is just a word.
+- **Nested JSON jump lands on the right key.** `json_leaf_positions` read
+  its captures in the wrong order, so the structural index was always
+  empty and every jump went to the first `"leaf"` anywhere in the file; an
+  inline `{ … }` value no longer opens a level for the lines after it.
+- **Fresh projects.** A project file edited outside Neovim (git checkout,
+  another editor) is re-read: the decoded table's identity tells a stale
+  project, at one stat per refresh. `setup()` called again drops projects
+  built from the old options. A language file added outside Neovim is found
+  once its directory's signature changes. Symlinked translation and source
+  files count as files.
+
 ### README media
 
 The README images are recorded, not drawn: `media/render.mjs` runs
@@ -348,6 +390,9 @@ so every printed path reads `~/orbit/...`.
 
 Beware when touching these areas:
 
+- `:edit` / `:edit!` on a loaded buffer fire BufUnload (and BufReadPost),
+  yet the buffer's extmarks survive the re-read. State dropped on BufUnload
+  must take its marks with it.
 - `vim.fs.dirname('/')` returns `'/'` (and `dirname('')` returns `'.'`),
   so walk-up loops need an explicit `parent == cur` termination or they spin
   forever. `resolve.find_upward` carries this guard.
