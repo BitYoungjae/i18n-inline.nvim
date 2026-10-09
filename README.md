@@ -41,6 +41,12 @@ suggestion. You can also map `<Plug>(i18n-inline-hover)`,
 (LazyVim users: skip `gK`. LazyVim takes it per buffer when an LSP
 attaches.)
 
+Don't lazy-load it. It costs well under a millisecond at startup and loads
+the rest when a buffer needs it. A lazy-loaded plugin is invisible to
+`:checkhealth`, and with lazy.nvim's `keys` nothing shows until you press
+one. So no `ft`, `event` or `cmd`, and if you map keys through `keys`, add
+`lazy = false`.
+
 **2. Add `.i18n-inline.json` to the root of your project.**
 
 ```json
@@ -54,6 +60,11 @@ translated from, which lets the plugin point out keys a language is still
 missing. Pick the preset for your library: `i18next`, `next-intl`,
 `vue-i18n`, `flutter` or `gettext`. There are
 [examples for each](docs/configuration.md#examples-by-stack).
+
+If the repository keeps translations in several directories (one per
+package, page or email template), list them all in this one file with
+`catalogs` rather than adding a project file per directory. See
+[Several translation directories](docs/configuration.md#several-translation-directories).
 
 **3. Open a file that uses translations.** If nothing shows up, run
 `:checkhealth i18n-inline`. It tells you whether the project was found,
@@ -76,20 +87,31 @@ docs/configuration.md).
    a default string.
 2. Write .i18n-inline.json at the repo root. Use a preset if one fits and
    add only what differs from it; otherwise write Lua patterns (not regex)
-   as the docs describe. If calls carry defaults, preview the language
-   they're written in; if not, ask me which language to preview.
+   as the docs describe. If translations live in several directories,
+   list them all in `catalogs` in this one file (a `*` matches one
+   directory level); never write a project file per directory. If calls
+   carry defaults, preview the language they're written in; if not, ask me
+   which language to preview.
 3. Add the plugin to my Neovim config with the plugin manager I already
-   use, and map hover, jump and toggle to keys that are free in my config.
+   use, without lazy-loading it (no ft/event/cmd triggers; with lazy.nvim
+   `keys`, also set lazy = false), and map hover, jump and toggle to keys
+   that are free in my config.
 4. From the repo root, run
      nvim --headless "+checkhealth i18n-inline" "+w! /tmp/i18n-health.txt" +qa
    and fix the config until the project is found, every translation file
-   parses, and the patterns match calls in the code. Then run the audit:
+   parses, and the patterns match calls in the code. Calls whose keys are
+   found only in catalogs their file doesn't read usually mean the file
+   gets its messages from another directory at runtime (a shared
+   component fed through props): map it in `uses`, or tell me if it
+   shouldn't. Then run the audit:
      nvim --headless +I18nCheck "+sleep 2" "+redir! > /tmp/i18n-check.txt" \
        "+silent! clist" "+silent messages" "+redir END" +qa
    Keys reported unused because the code reaches them indirectly (built
    at runtime, passed around as strings, behind a wrapper) go in
-   check.ignore. Mismatches and missing keys are findings for me, not
-   something to configure away.
+   check.ignore, and so do keys reported missing because the code adds
+   them to the messages at runtime; list those for me. Other mismatches
+   and missing keys are findings for me, not something to configure
+   away.
 5. Show me the final config, the health check, the audit summary, and
    anything the plugin can't cover.
 ```
@@ -180,6 +202,8 @@ no preset covers are in [docs/configuration.md](docs/configuration.md).
 - Namespaces are only picked up from `const` bindings with a string
   literal, in the same file as the calls. A `t` passed into another
   function, or wrapped in one, isn't followed.
+- Which catalog a file reads is decided by where it sits. Code that gets
+  its messages at runtime (props, context) needs a `uses` entry.
 - One file per language. The i18next layout with one file per namespace
   (`locales/<lang>/<ns>.json`) isn't supported yet; `file_template` can
   point at a single namespace file.

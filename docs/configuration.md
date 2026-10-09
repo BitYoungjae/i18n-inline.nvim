@@ -6,6 +6,7 @@ every option, how patterns work, and what the audit reports.
 - [Where options come from](#where-options-come-from)
 - [Presets](#presets)
 - [Examples by stack](#examples-by-stack)
+- [Several translation directories](#several-translation-directories)
 - [All options](#all-options)
 - [Highlights](#highlights)
 - [Writing patterns](#writing-patterns)
@@ -123,6 +124,66 @@ plugin from reading the next string literal as a default:
 }
 ```
 
+## Several translation directories
+
+Some repositories keep a catalog per package, page or email template.
+List them all in one project file with `catalogs` rather than writing a
+project file per directory: separate projects can't see each other's keys,
+and shared code needs them. React-intl email templates with a shared footer
+catalog and a shared component:
+
+```json
+{
+  "preview_lang": "ko",
+  "source_lang": "en",
+  "filetypes": ["typescript", "typescriptreact"],
+  "patterns": ["formatMessage%s*%(%s*{%s*id%s*:%s*['\"]([^'\"\n]+)['\"]"],
+  "fallback_style": "none",
+  "catalogs": [
+    "src/emails/*/messages",
+    { "dir": "src/emails/shared/messages", "file_template": "footer-%s.json" }
+  ],
+  "uses": {
+    "src/emails/shared/components/digest.tsx": ["src/emails/digest_*/messages"]
+  },
+  "check": { "extensions": ["ts", "tsx"] }
+}
+```
+
+An entry is a directory, or a table with `dir` and any of `languages`,
+`file_template`, `format` and `key_style` for that catalog alone; the
+top-level values are every entry's defaults. A `*` matches one directory
+level, and a directory it matches that holds no translation files is
+skipped. A directory one entry names exactly is never taken by another
+entry's `*`: above, `shared/messages` is read as `footer-<lang>.json`, not
+as a template.
+
+Which catalogs a file reads:
+
+1. **`uses`**, when one of its globs covers the file: the catalogs listed
+   there, in the order of `catalogs`. It's for code that gets its messages
+   at runtime, like the shared component above, which receives the daily
+   or the weekly digest's catalog as props. A glob that names a directory
+   covers everything under it, and `**` matches any number of directories.
+2. **Its location.** A catalog serves the folder that holds it, widened
+   upward until the next level would hold another catalog:
+   `src/emails/order/messages` serves `src/emails/order/`, and
+   `apps/admin/public/locales` serves `apps/admin/`. The closest one wins.
+3. **All of them**, in the order listed, for a file outside every
+   catalog's folder. With a single catalog, that's every file.
+
+The first catalog that has the key supplies the value. The popover shows a
+section for each catalog the file reads that has the key, and
+`:I18nJump!` lists all of them.
+
+A key that the file's catalogs lack but another catalog has shows
+`✗ only in <catalog>` instead of `✗ key not found`, and the audit and
+`:checkhealth` name the catalogs that have it. Either the file needs a
+`uses` entry, or the key really is missing from its own catalog.
+
+`dir` is the one-catalog spelling of `catalogs`. Set one or the other; a
+project file that sets either overrides what `setup()` set.
+
 ## All options
 
 The same keys work in `setup()` and in the project file.
@@ -131,9 +192,11 @@ The same keys work in `setup()` and in the project file.
 | --- | --- | --- |
 | `preset` | `nil` | framework preset, see [Presets](#presets) |
 | `project_file` | `'.i18n-inline.json'` | name of the project file |
-| `dir` | `nil` | translation directory. Absolute, or relative to the project file. Without a project file, the nearest ancestor of the buffer that contains it |
+| `dir` | `nil` | translation directory. Absolute, or relative to the project file. Without a project file, the nearest ancestor of the buffer that contains it. Same as a one-entry `catalogs` |
+| `catalogs` | `nil` | several translation directories, see [Several translation directories](#several-translation-directories) |
+| `uses` | `nil` | `{ ["file glob"] = { "catalog glob", … } }`: the catalogs a file reads when its location doesn't tell |
 | `languages` | `nil` | language list. `nil` finds the files directly inside `dir` (not in subfolders) and names each language after its file (`ko.json` → `ko`, `zh_CN.json` → `zh_CN`); a list limits which ones are used |
-| `file_template` | `nil` | file name per language, e.g. `'%s/messages.json'`; needs `languages` |
+| `file_template` | `nil` | file name per language, e.g. `'footer-%s.json'` or `'%s/LC_MESSAGES/messages.po'`. Without `languages`, the files it matches name the languages |
 | `format` | `nil` | `'json'`, `'arb'` or `'po'`; `nil` picks by extension |
 | `key_style` | `'flat'` | `'nested'` reads `{"a": {"b": …}}` as key `a.b` |
 | `separator` | `'.'` | joins nested paths and namespaces (`':'` for `ns:key` setups) |
@@ -162,8 +225,8 @@ The same keys work in `setup()` and in the project file.
 | `debounce_ms` | `150` | delay between an edit and the refresh |
 | `max_filesize` | `1000000` | skip buffers larger than this many bytes |
 | `check.extensions` | `{'cljs','cljc','clj'}` | file extensions `:I18nCheck` reads |
-| `check.exclude_dirs` | `{'.git','node_modules','target','.cpcache','dist','build','out','.next'}` | directory names `:I18nCheck` skips (a list replaces this one, so repeat the ones you keep) |
-| `check.ignore` | `{}` | key globs left out of the unused-key report, e.g. `"templateVar.*"`. `*` matches any run of characters, dots included; `?` matches one |
+| `check.exclude_dirs` | `{'.git','node_modules','target','.cpcache','dist','build','out','.next'}` | directories `:I18nCheck` skips. A name matches at any depth; an entry with a `/` is a path from the project root, like `src/generated` or `apps/*/dist`. A list replaces this one, so repeat the ones you keep. Folders with their own project file are always skipped |
+| `check.ignore` | `{}` | key globs whose absence isn't reported: missing keys, missing translations and unused keys (mismatches still are), e.g. `"templateVar.*"`. `*` matches any run of characters, dots included; `?` matches one |
 | `keymap` | `nil` | old name for `keymaps.hover` |
 
 ## Highlights
@@ -231,21 +294,29 @@ calls through it are skipped rather than guessed. Add those key groups to
 
 ## What the audit reports
 
-`:I18nCheck` reads every matching file in the project and fills the
-quickfix list with:
+`:I18nCheck` reads every matching file under the project file's folder,
+except `check.exclude_dirs` and folders with a project file of their own
+(those are separate projects). It fills the quickfix list with:
 
 - **mismatch**: the code default differs from the preview language.
   Skipped with `compare: 'none'`; placeholder-only differences go away
   with `normalize: 'placeholders'`.
-- **missing key**: no translation file has the key.
-- **missing translation**: the key is in `source_lang` but not in another
-  language. The item points at that language's file.
+- **missing key**: none of the file's catalogs has the key. When another
+  catalog does, the item says `only in <catalog>` and names the catalogs
+  the file reads, and the summary counts these apart.
+- **missing translation**: the key is in a catalog's `source_lang` but not
+  in another of its languages. The item points at that language's file.
 
-It also prints keys that no call uses, checked against `source_lang` (or
-the preview language). Keys reached through a namespace count as used, and
-`check.ignore` globs are left out. On screen the list stops after ten
-keys. In a headless run (no UI attached) it's complete, and the report
-lines are kept in `:messages`, which is what the command below reads.
+It also prints keys that no call uses, per catalog, checked against
+`source_lang` (or the preview language). Keys reached through a namespace
+count as used, and so do keys a call finds only in another catalog. On
+screen the list stops after ten keys. In a headless run (no UI attached)
+it's complete, and the report lines are kept in `:messages`, which is what
+the command below reads.
+
+`check.ignore` globs leave a key out of everything but mismatches: use
+them for keys built at runtime (reported unused) and keys the code adds to
+the messages at runtime (reported missing).
 
 Keys that only exist in a translation, and not in `source_lang`, are not
 reported.
@@ -262,7 +333,8 @@ nvim --headless +I18nCheck "+sleep 2" "+redir! > /tmp/i18n-check.txt" \
 `:I18nJump` opens the preview language's file, or the one `jump.lang`
 names. `'ask'` asks every time, and `:I18nJump <lang>` picks one for a
 single jump. If the key is missing there but exists in `source_lang`, the
-source file opens instead, with a warning. When the translation file is
+source file opens instead, with a warning. A key that's only in another
+catalog opens that catalog's file, also with a warning. When the translation file is
 already open with unsaved changes, the jump lands on the line in that
 buffer, not on disk.
 
@@ -279,6 +351,10 @@ One Lua-pattern pass per buffer on each change. Some numbers from real
 projects: a full audit of a 1,000-file ClojureScript app with about 4,500
 calls takes around 130 ms, a 850-file Flutter app around 60 ms. A single
 buffer usually scans in under a millisecond.
+
+`:checkhealth` scans every source file (up to 5,000, for at most two
+seconds), so a tree where few files call `t()` still gets a real answer:
+about 160 ms on the 1,200-file app.
 
 Translation files are parsed once and cached until their size or mtime
 changes. Nested JSON is flattened at that point, so each lookup is a single

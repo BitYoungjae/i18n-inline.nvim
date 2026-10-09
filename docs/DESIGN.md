@@ -2,9 +2,9 @@
 
 Background, measurements and decisions that shaped the implementation.
 Written for future maintenance; the README covers usage. The measurements
-come from three private production codebases, called `cljs-app`
-(ClojureScript), `next-app` (Next.js + next-intl) and `dart-app` (Flutter)
-here. The generalization
+come from private production codebases, called `cljs-app`
+(ClojureScript), `next-app` (Next.js + next-intl), `dart-app` (Flutter)
+and `email-app` (react-intl email templates) here. The generalization
 requirements and their evidence live in `REQUIREMENTS.md`.
 
 ## Problem
@@ -41,8 +41,10 @@ presets.lua   framework preset tables (next-intl, i18next, vue-i18n, flutter,
               gettext)
 formats.lua   format registry: decode(raw, cfg) -> FLAT key->STRING map
               (json, arb, po); find_line(lines, key) -> lnum, col, len
-resolve.lua   project discovery (walk-up), per-project cfg, mtime+size file
-              cache, language ordering (sorted_langs) and lookup (value)
+resolve.lua   project discovery (walk-up), per-project cfg, catalogs
+              (wildcard expansion, homes, `uses`), per-file lookup views
+              (find/classify, "only in" another catalog), mtime+size file
+              cache, language ordering (sorted_langs)
 scan.lua      pattern scan (arity-dispatched), namespace bindings, fallback
               extraction, placeholder normalization, status classification
 preview.lua   per-buffer state, debounced refresh, extmark rendering, display
@@ -51,12 +53,12 @@ preview.lua   per-buffer state, debounced refresh, extmark rendering, display
 hover.lua     per-language popover (own float, single instance, close-on-move)
 jump.lua      :I18nJump — open the translation file at the key under the
               cursor (per-format line location via formats.find_line)
-check.lua     project-wide audit -> quickfix, batched; source-lang gaps,
-              ignore globs, namespace-aware unused detection
-health.lua    :checkhealth — project, formats, unknown keys, sample
-              resolution rate over an evenly spread file sample
-util.lua      notify, paths, file reading, source-tree walk, offsets,
-              truncation/quoting for display
+check.lua     project-wide audit -> quickfix, batched; per-catalog gaps and
+              unused keys, ignore globs, nested projects skipped
+health.lua    :checkhealth — project, catalogs, formats, unknown keys,
+              resolution over the whole source tree (capped, budgeted)
+util.lua      notify, paths, path globs, file reading, source-tree walk,
+              offsets, truncation/quoting for display
 ```
 
 Key decisions (original round):
@@ -229,6 +231,106 @@ byte-identical before and after.
   CI or an agent can capture them; with a UI they stay out of the history,
   which would turn consecutive lines into a hit-enter prompt.
 
+Key decisions (catalogs round, 2026-10-09). An agent ran the README's
+setup prompt on a fourth private repository, `email-app` (react-intl
+email templates): 8 translation directories
+(7 per-template `messages/<lang>.json` plus a shared
+`footer-<lang>.json`), 13 languages each, and a shared component that
+receives one of two templates' catalogs as props. It reported seven
+problems; each was reproduced headless against a copy of that repository
+before designing:
+
+1. One project file bound one directory, so it took eight.
+2. The shared component's 9 calls bound to the footer project by
+   proximity and all read `✗` although the keys exist (in the two
+   templates' catalogs).
+3. A root project file audited the whole tree, so every other project's
+   calls read missing: 69 false items without a 26-entry `exclude_dirs`
+   of sibling names (name-based, so `components` couldn't be targeted).
+4. `:checkhealth` sampled 25 of 231 files where 7 hold calls, and warned
+   "patterns matched no call sites" or "none resolve", depending on
+   which files the sample hit, pointing at addressing when the patterns
+   were fine.
+5. With lazy.nvim's `ft` (or `keys`) the plugin isn't on the
+   runtimepath, so `:checkhealth i18n-inline` finds nothing.
+6. `check.ignore` didn't apply to missing keys.
+7. Nothing told a structural false missing from a real one.
+
+The model behind 1–3 and 7 was "project file = one directory = one audit
+scope, buffer → nearest project file". The decisions:
+
+- **A project holds catalogs (#1).** `catalogs` lists directories, each
+  a string or a table overriding the read options (`languages`,
+  `file_template`, `format`, `key_style`); `dir` is the one-entry
+  spelling, and the layer that sets either decides (a project file's
+  `dir` beats `setup()`'s `catalogs` and vice versa). `*` matches one
+  directory level; `**` is not supported for catalogs (no use case
+  needed it, and it means a recursive walk at project load). A directory
+  an entry names exactly is never claimed by another entry's `*`
+  (`src/emails/*/messages` also matches `shared/messages`, whose
+  `footer-%s.json` naming only the exact entry describes); between two
+  wildcards the first wins. Wildcard matches without translation files
+  are dropped and listed by health.
+- **`file_template` discovers languages** when `languages` is absent: the
+  template segment holding `%s` becomes a pattern over its parent's
+  entries (`footer-%s.json`, `%s/LC_MESSAGES/messages.po`). The old
+  "file_template requires languages" rule only existed because discovery
+  couldn't read templates.
+- **Which catalogs a file reads (#2).** In order: `uses` (file glob →
+  catalog globs; a directory glob covers its subtree), else the deepest
+  catalog home holding the file, else every catalog in declaration order.
+  A home is the catalog dir's parent, climbed while the level above holds
+  no other catalog (with several catalogs the climb stops below the
+  root, which holds them all; a catalog directly under the root has the
+  root as home, and a deeper home wins over it). Two
+  simpler rules failed real layouts: "parent of the dir" gives
+  `apps/admin/public` for `apps/admin/public/locales` (the code is in
+  `apps/admin/src`), and "highest folder holding no other catalog" can't
+  nest (`x/messages` plus `x/sub/messages` left `x/index.ts` homeless).
+  The climb handles both. A lone catalog serves every file, so
+  single-directory projects behave exactly as before. The scan output of
+  the three reference repositories (7,611 calls) is byte-identical.
+- **Runtime-chosen catalogs are declared, not inferred.** The shared
+  component's catalog is a prop, and following imports and JSX props is
+  out of reach for patterns. `uses` says it in one line. Union-by-default (i18n-ally's approach) was rejected:
+  per-template catalogs reuse generic keys (`heading`, `cta`,
+  `preview`), so a template reading another's key would silently
+  resolve, a real bug hidden.
+- **"Only in <catalog>" (#7).** A key the file's catalogs lack is looked
+  up in the project's other catalogs. Found there, it stays `missing`
+  (users of that file would see the raw id) but says where it is:
+  inline `✗ only in order/messages +2`, in the audit item with the
+  catalogs the file reads, counted apart in the summary, and as a health
+  warning naming the files and `uses`. Lookups never cross projects;
+  health says so when nested projects exist.
+- **Audit scope (#3).** The walk skips subtrees holding their own project
+  file (listed in the summary and health), so a root file next to
+  per-directory files needs no excludes. `exclude_dirs` entries with a
+  `/` are root-relative path globs; bare names keep matching at any
+  depth, as in .gitignore. Lists still replace wholesale (R6.4).
+- **`check.ignore` covers absence (#6):** missing keys, missing
+  translations and unused keys. Not mismatches: those compare two values
+  that exist, and are never structural. The README prompt keeps agents
+  from using it to hide findings: runtime-added keys are listed for the
+  user.
+- **Health scans everything (#4)** up to 5,000 files and two seconds, in
+  a strided order so a cut still covers the tree: 50–160 ms on the
+  reference repositories (the sample took 3–34 ms; a one-off diagnostic
+  can afford it). Unresolved keys come with examples (`key (file:line)`),
+  and "none resolve" only fires when nothing resolves anywhere.
+- **Don't lazy-load (#5).** Nothing in the plugin can make a health check
+  visible before the plugin is on the runtimepath, so the README says not
+  to lazy-load (and why `keys` implies it), and the agent prompt says the
+  same. `setup()` now loads the rendering modules on the first event that
+  needs them: 0.15 ms for plugin/ plus ~0.45 ms for `setup()`, down from
+  ~0.8 ms. Health warns when `setup()` never ran (commands work, previews
+  don't).
+- **Lookups go through a view** (`resolve.view(project, path, memo)`):
+  the file's catalogs, the others, and a memo of key tables shared across
+  one pass, so an audit loads each catalog's tables once, not once per
+  file. Audit time is unchanged (cljs-app, 1,223 files: 124 → 129 ms,
+  within noise).
+
 ### README media
 
 The README images are recorded, not drawn: `media/render.mjs` runs
@@ -331,5 +433,11 @@ missing→source fallback, quickfix variant, ask mode).
 fixed in the review pass, including the autocmd wiring (relative-name
 saves, new language files) and the plugin file (commands without
 `setup()`, completion filtering).
+`tests/catalogs.lua` covers the catalogs round: path globs, the walk's
+path excludes and nested-project skip, catalog validation and the
+dir/catalogs layer rule, wildcard expansion and template discovery,
+homes/`uses`/fallback, "only in" lookups through inline, popover, jump
+and the audit, ignore semantics, the full-tree health scan, and
+catalogs appearing on save.
 Set `I18N_SMOKE_REPO` to also scan a real ClojureScript repository and
 assert sane totals.
