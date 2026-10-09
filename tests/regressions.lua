@@ -566,6 +566,29 @@ return function(t, eq, ok_, make_project, plugin_dir)
     eq(out['one'], '하나')
     eq(out['Logic'], '로직')
   end)
+  -- ===== scan robustness =====
+
+  t('regression: a pattern matching the empty string terminates', function()
+    local ms = scan.scan(' (tr [:a "x"])', { patterns = { ':?([%w-]*)' } })
+    ok_(#ms > 0)
+  end)
+
+  t('regression: a malformed pattern is skipped, the others still match', function()
+    local notified = {}
+    local orig = vim.notify
+    vim.notify = function(msg)
+      notified[#notified + 1] = msg
+    end
+    local ok, ms = pcall(scan.scan, '(tr [:a "x"])', { patterns = { '%(tr %[:([%w-]+', CLJ[1] } })
+    scan.scan('(tr [:a "x"])', { patterns = { '%(tr %[:([%w-]+' } })
+    vim.notify = orig
+    ok_(ok, tostring(ms))
+    eq(#ms, 1)
+    eq(ms[1].key, 'a')
+    eq(#notified, 1) -- once per pattern, not once per scan
+    ok_(notified[1]:find('unfinished capture', 1, true), notified[1])
+  end)
+
   -- ===== json jump =====
 
   t('regression: json find_line follows the structure to the right key', function()

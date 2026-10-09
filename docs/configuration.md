@@ -259,6 +259,8 @@ comma, then a `"…"`, `'…'` or backtick string. Template strings with
 `${…}` are skipped, and the search never runs into the next call. Calls
 split over several lines work.
 
+A pattern Lua cannot parse is reported once and matches nothing.
+
 Lua patterns escape with `%`, not backslashes, so putting one in JSON only
 needs JSON's own escapes: a `"` becomes `\"`, and `\t` and `\n` mean tab
 and newline just as they do in Lua.

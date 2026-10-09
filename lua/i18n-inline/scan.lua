@@ -87,21 +87,42 @@ end
 
 M.parse_string_literal = parse_string_literal
 
+-- Patterns already reported as malformed.
+local reported = {}
+
+-- Call fn(s, e, c1, c2) for every match of `pat` in `text`. An empty match
+-- moves on by one byte (it would be found again forever). A malformed
+-- pattern is reported once and matches nothing: Lua only notices when the
+-- matcher reaches the bad part, so validating the config cannot catch it.
+local function each_match(text, pat, fn)
+  local init = 1
+  while init <= #text + 1 do
+    local ok, s, e, c1, c2 = pcall(string.find, text, pat, init)
+    if not ok then
+      if not reported[pat] then
+        reported[pat] = true
+        local msg = tostring(s):gsub('^.-:%d+: ', '')
+        util.notify(('invalid pattern %s: %s'):format(pat, msg), vim.log.levels.WARN)
+      end
+      return
+    end
+    if not s then
+      return
+    end
+    init = math.max(e, s) + 1
+    fn(s, e, c1, c2)
+  end
+end
+
 -- Pre-pass: collect namespace bindings. Returns { varname = namespace }.
 function M.extract_bindings(text, patterns)
   local bindings = {}
   for _, pat in ipairs(patterns or {}) do
-    local init = 1
-    while true do
-      local s, e, name, ns = text:find(pat, init)
-      if not s then
-        break
-      end
-      init = e + 1
+    each_match(text, pat, function(_, _, name, ns)
       if type(name) == 'string' and name ~= '' and bindings[name] == nil then
         bindings[name] = type(ns) == 'string' and ns or ''
       end
-    end
+    end)
   end
   return bindings
 end
@@ -179,34 +200,27 @@ function M.scan(text, cfg)
   local matches = {}
   local seen = {} -- dedupe across patterns by call start offset
   for _, pat in ipairs(patterns) do
-    local init = 1
-    while true do
-      local s, e, c1, c2 = text:find(pat, init)
-      if not s then
-        break
+    each_match(text, pat, function(s, e, c1, c2)
+      if seen[s] then
+        return
       end
-      init = e + 1
-      if not seen[s] then
-        seen[s] = true
-        local m
-        if c2 ~= nil then
-          -- receiver + subkey form
-          if c1 == nil or c2 == '' then
-            m = nil
-          else
-            local key = resolve_key(c1, c2, bindings, aliases, sep)
-            if key then
-              m = { key = key, receiver = c1, subkey = c2, call_s = s, call_e = e }
-            end
+      seen[s] = true
+      local m
+      if c2 ~= nil then
+        -- receiver + subkey form
+        if c1 ~= nil and c2 ~= '' then
+          local key = resolve_key(c1, c2, bindings, aliases, sep)
+          if key then
+            m = { key = key, receiver = c1, subkey = c2, call_s = s, call_e = e }
           end
-        elseif c1 ~= nil and c1 ~= '' then
-          m = { key = c1, call_s = s, call_e = e }
         end
-        if m then
-          matches[#matches + 1] = m
-        end
+      elseif c1 ~= nil and c1 ~= '' then
+        m = { key = c1, call_s = s, call_e = e }
       end
-    end
+      if m then
+        matches[#matches + 1] = m
+      end
+    end)
   end
   table.sort(matches, function(a, b)
     return a.call_s < b.call_s
