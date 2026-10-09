@@ -630,4 +630,18 @@ return function(t, eq, ok_, make_project, plugin_dir)
     -- an inline object opens no level for the lines after it
     eq({ find(lines, 'Home.after', { separator = '.' }) }, { 5, 5, 7 })
   end)
+
+  t('regression: symlinked translation and source files are found', function()
+    reset_all()
+    local root = make_project({ dir = 'tr', patterns = CLJ }, { en = { a = 'EN' } })
+    write(root .. '/shared/ko.json', '{"a": "KO"}')
+    uv.fs_symlink(root .. '/shared/ko.json', root .. '/tr/ko.json')
+    write(root .. '/real/x.cljs', '(tr [:a])')
+    vim.fn.mkdir(root .. '/src', 'p')
+    uv.fs_symlink(root .. '/real/x.cljs', root .. '/src/y.cljs')
+    local project = resolve.project_from(root)
+    ok_(project.catalogs[1].langs.ko ~= nil, 'symlinked ko.json not discovered')
+    local files = require('i18n-inline.util').walk_files(root, { extensions = { 'cljs' } })
+    eq(#files, 2)
+  end)
 end

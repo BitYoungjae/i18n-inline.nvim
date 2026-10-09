@@ -102,7 +102,7 @@ local function discover_langs(dir, only)
     if not name then
       break
     end
-    if ftype == 'file' then
+    if util.is_file(dir .. '/' .. name, ftype) then
       local lang = name:match('^(.+)%.[%w]+$')
       -- only extensions a registered format claims (json, po, …)
       if lang and lang ~= '' and (not allowed or allowed[lang]) and formats.for_path(name, {}) then
@@ -151,16 +151,9 @@ local function discover_template_langs(dir, template, only)
     end
     local lang = name:match(pat)
     if lang and (not allowed or allowed[lang]) then
-      if rest == '' then
-        if ftype == 'file' then
-          langs[lang] = normalize(parent .. '/' .. name)
-        end
-      elseif ftype == 'directory' then
-        local path = parent .. '/' .. name .. '/' .. rest
-        local st = uv.fs_stat(path)
-        if st and st.type == 'file' then
-          langs[lang] = normalize(path)
-        end
+      local path = parent .. '/' .. name .. (rest == '' and '' or '/' .. rest)
+      if util.is_file(path, rest == '' and ftype or nil) then
+        langs[lang] = normalize(path)
       end
     end
   end

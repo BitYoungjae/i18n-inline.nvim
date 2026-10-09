@@ -105,6 +105,18 @@ function M.relpath(root, path)
   return nil
 end
 
+-- Is the directory entry `path` of type `ftype` (fs_scandir_next's) a
+-- file? A symlink counts when it points at one.
+function M.is_file(path, ftype)
+  if ftype == 'file' then
+    return true
+  elseif ftype == 'link' or ftype == nil then
+    local st = vim.uv.fs_stat(path)
+    return st ~= nil and st.type == 'file'
+  end
+  return false
+end
+
 -- Source files under `root` whose extension is in `opts.extensions`.
 -- Skipped directories:
 --   - `opts.exclude_dirs` entries. A bare name matches at any depth; an
@@ -170,7 +182,7 @@ function M.walk_files(root, opts)
         if not excluded(name, sub) then
           walk(path, sub)
         end
-      elseif ftype == 'file' then
+      elseif M.is_file(path, ftype) then
         local ext = name:match('%.([%w]+)$')
         if ext and ext_set[ext:lower()] then
           files[#files + 1] = path
