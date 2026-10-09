@@ -26,9 +26,18 @@ local api = vim.api
 
 local M = {}
 
+local did_setup = false
+
+-- Whether setup() ran (it adds the rendering autocmds; :checkhealth says
+-- when it hasn't).
+function M.is_setup()
+  return did_setup
+end
+
 ---@param opts table|nil setup options (see config.lua defaults)
 function M.setup(opts)
   require('i18n-inline.config').setup(opts)
+  did_setup = true
 
   -- Rendering modules load on the first event that needs them, so setup()
   -- stays cheap enough to run at startup (no lazy-loading needed).

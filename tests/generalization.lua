@@ -588,7 +588,7 @@ return function(t, eq, ok_, make_project)
     local project = resolve.project_from(root .. '/src/app.py')
     ok_(project, 'project not found')
     eq(project.cfg.compare, 'none')
-    local keys = resolve.ensure_lang(project, 'ko')
+    local keys = resolve.ensure_lang(project.catalogs[1], 'ko')
     eq(keys, { ['Save changes'] = '변경사항 저장' })
 
     -- code literal = msgid; compare=none -> value preview, no mismatch

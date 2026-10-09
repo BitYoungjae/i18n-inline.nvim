@@ -24,13 +24,23 @@ local defaults = {
   project_file = '.i18n-inline.json',
   -- Translation directory: absolute path, or relative to the project root
   -- (the nearest ancestor containing it). nil means "must come from the
-  -- project file or setup()".
+  -- project file or setup()". Shorthand for a one-entry `catalogs`.
   dir = nil,
+  -- Several translation directories ("catalogs") in one project. Entries
+  -- are a dir string or { dir, languages?, file_template?, format?,
+  -- key_style? }; a `*` in dir matches one directory level. The top-level
+  -- languages/file_template/format/key_style are every entry's defaults.
+  -- See resolve.lua for which source files read which catalog.
+  catalogs = nil,
+  -- Source file glob -> catalog dir globs, for code that reads catalogs
+  -- other than the one its location implies (a shared component that gets
+  -- its messages as props).
+  uses = nil,
   -- Language list. nil discovers translation files in `dir` (ko.json/ko.po
   -- -> "ko"); with discovery, a list restricts which files are used.
   languages = nil,
-  -- Language -> file path template (e.g. 'locales/%s.json').
-  -- When set, `languages` must be given explicitly.
+  -- Language -> file path template (e.g. 'locales/%s.json'). Without
+  -- `languages`, the languages are discovered from the files it matches.
   file_template = nil,
   -- File format: nil auto-detects by extension (.json, .arb, .po). Built-in
   -- formats are listed by :checkhealth; see formats.lua to add more.
@@ -134,8 +144,12 @@ local defaults = {
   -- :I18nCheck project audit
   check = {
     extensions = { 'cljs', 'cljc', 'clj' },
+    -- Bare names match at any depth; entries with a '/' are path globs
+    -- from the project root. Subtrees with their own project file are
+    -- always skipped.
     exclude_dirs = { '.git', 'node_modules', 'target', '.cpcache', 'dist', 'build', 'out', '.next' },
-    -- Glob patterns (R5.2) for keys excluded from unused-key detection,
+    -- Glob patterns (R5.2) for keys whose absence is not reported: missing
+    -- keys, missing translations and unused keys (mismatches still are),
     -- e.g. known-dynamic key groups: "templateVar.*", "Invoice.image".
     ignore = {},
   },
@@ -157,14 +171,29 @@ end
 --   'patterns' — non-empty list of strings
 --   { enum = {...} }
 --   { fields = { … } } — dict; unknown sub-keys are reported too
+--   { entries = { … } } — non-empty list of strings or of such dicts
+--   { map = spec } — dict of string keys to `spec` values
+local format_spec = { enum = nil } -- filled lazily (formats requires nothing from here)
+local key_style_spec = { enum = { 'flat', 'nested' } }
+
 local schema = {
   preset = { enum = presets.names() },
   project_file = 'string',
   dir = 'string',
+  catalogs = {
+    entries = {
+      dir = 'string',
+      languages = 'patterns',
+      file_template = 'string',
+      format = format_spec,
+      key_style = key_style_spec,
+    },
+  },
+  uses = { map = 'patterns' },
   languages = 'patterns',
   file_template = 'string',
-  format = { enum = nil }, -- filled lazily (formats requires nothing from here)
-  key_style = { enum = { 'flat', 'nested' } },
+  format = format_spec,
+  key_style = key_style_spec,
   separator = 'string',
   preview_lang = 'string',
   source_lang = 'string',
@@ -253,6 +282,34 @@ local function check_value(name, v, spec)
         end
       end
     end
+  elseif spec.entries then
+    if type(v) ~= 'table' or not vim.islist(v) or #v == 0 then
+      return name .. ' must be a non-empty list'
+    end
+    for i, entry in ipairs(v) do
+      local ename = ('%s[%d]'):format(name, i)
+      if type(entry) == 'table' then
+        if type(entry.dir) ~= 'string' then
+          return ename .. '.dir must be a string'
+        end
+        local err = check_value(ename, entry, { fields = spec.entries })
+        if err then
+          return err
+        end
+      elseif type(entry) ~= 'string' then
+        return ename .. ' must be a directory string or a table with "dir"'
+      end
+    end
+  elseif spec.map then
+    if type(v) ~= 'table' or (next(v) ~= nil and vim.islist(v)) then
+      return ('%s must be a table of name -> value'):format(name)
+    end
+    for k, sub in pairs(v) do
+      local err = check_value(('%s["%s"]'):format(name, tostring(k)), sub, spec.map)
+      if err then
+        return err
+      end
+    end
   end
   return nil
 end
@@ -260,7 +317,7 @@ end
 -- Validate a config table (used for both setup() and project files).
 -- Returns nil when valid, or an error message.
 local function validate(cfg)
-  schema.format.enum = schema.format.enum or require('i18n-inline.formats').names()
+  format_spec.enum = format_spec.enum or require('i18n-inline.formats').names()
   local names = vim.tbl_keys(schema)
   table.sort(names) -- deterministic first error
   for _, name in ipairs(names) do
@@ -271,8 +328,8 @@ local function validate(cfg)
       end
     end
   end
-  if cfg.file_template and not cfg.languages then
-    return 'file_template requires an explicit languages list'
+  if cfg.dir and cfg.catalogs then
+    return 'set either dir or catalogs, not both'
   end
   return nil
 end
@@ -280,11 +337,15 @@ end
 -- Keys the schema does not know (typos like "preview_language" would
 -- otherwise be silently ignored). Dotted for nested dicts. JSON-file
 -- conventions ("$schema", "//" comment keys) are not options and pass.
+local function is_meta(k)
+  return type(k) == 'string' and (k:sub(1, 1) == '$' or k:sub(1, 2) == '//')
+end
+
 function M.unknown_keys(cfg)
   local out = {}
   for k, v in pairs(cfg or {}) do
     local spec = schema[k]
-    if type(k) == 'string' and (k:sub(1, 1) == '$' or k:sub(1, 2) == '//') then
+    if is_meta(k) then
       -- metadata, not an option
     elseif spec == nil then
       out[#out + 1] = tostring(k)
@@ -292,6 +353,16 @@ function M.unknown_keys(cfg)
       for sub in pairs(v) do
         if spec.fields[sub] == nil then
           out[#out + 1] = k .. '.' .. tostring(sub)
+        end
+      end
+    elseif type(spec) == 'table' and spec.entries and type(v) == 'table' then
+      for i, entry in ipairs(v) do
+        if type(entry) == 'table' then
+          for sub in pairs(entry) do
+            if spec.entries[sub] == nil and not is_meta(sub) then
+              out[#out + 1] = ('%s[%d].%s'):format(k, i, tostring(sub))
+            end
+          end
         end
       end
     end
@@ -326,6 +397,13 @@ local function build(file_cfg)
     base = vim.tbl_deep_extend('force', base, presets.get(user.preset))
   end
   local cfg = vim.tbl_deep_extend('force', base, user)
+  -- `dir` and `catalogs` spell one setting: a project file that sets either
+  -- overrides whichever one setup() set
+  if file_cfg and file_cfg.dir then
+    cfg.catalogs = nil
+  elseif file_cfg and file_cfg.catalogs then
+    cfg.dir = nil
+  end
   -- keymap (deprecated) still applies, from setup() and project files alike
   if cfg.keymap and not cfg.keymaps.hover then
     cfg.keymaps.hover = cfg.keymap

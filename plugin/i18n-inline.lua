@@ -65,13 +65,22 @@ end, {
   nargs = '?',
   -- A Lua completion function is customlist-style: filtering is ours.
   complete = function(arglead)
-    local project = require('i18n-inline.resolve').project_for(api.nvim_get_current_buf())
+    local resolve = require('i18n-inline.resolve')
+    local buf = api.nvim_get_current_buf()
+    local project = resolve.project_for(buf)
     if not project then
       return {}
     end
+    -- the languages of the catalogs this buffer reads
+    local langs = {}
+    for _, catalog in ipairs(resolve.catalogs_for(project, resolve.buf_path(buf))) do
+      for lang, path in pairs(catalog.langs) do
+        langs[lang] = path
+      end
+    end
     return vim.tbl_filter(function(lang)
       return vim.startswith(lang, arglead)
-    end, require('i18n-inline.resolve').sorted_langs(project))
+    end, resolve.sorted_langs({ cfg = project.cfg, langs = langs }))
   end,
   desc = 'i18n: open the translation file at the key under the cursor (<lang> = specific language, ! = all languages)',
 })

@@ -2,7 +2,8 @@
 -- plus an underline on mismatched fallback strings).
 --
 -- Per-buffer state: { project, matches, tick, virt_ids, hl_ids, timer, … }
--- Each match extends the scan result with row/col positions and status/value.
+-- Each match extends the scan result with row/col positions and the
+-- resolve.classify fields (status, value, catalog, in_source, elsewhere).
 -- `tick` is the changedtick the matches were computed at; hover and jump go
 -- through current_match(), which re-scans first when the buffer changed
 -- since (or was never scanned), so they never act on stale positions.
@@ -205,9 +206,21 @@ local function effective_show(cfg)
   return show_override or cfg.show
 end
 
+-- "only in <catalog>" (+N more): the key exists, but in catalogs this file
+-- does not read (see resolve.lua).
+local function elsewhere_text(m)
+  local more = #m.elsewhere > 1 and (' +%d'):format(#m.elsewhere - 1) or ''
+  return 'only in ' .. m.elsewhere[1].label .. more
+end
+
 local function build_virt_text(m, cfg)
   if m.status == 'missing' then
-    local text = m.in_source and ('missing in ' .. cfg.preview_lang) or cfg.missing_text
+    local text = cfg.missing_text
+    if m.in_source then
+      text = 'missing in ' .. cfg.preview_lang
+    elseif m.elsewhere then
+      text = elsewhere_text(m)
+    end
     return cfg.prefix .. '✗ ' .. text, cfg.hl.missing
   end
   local sign = m.status == 'mismatch' and '≠ ' or ''
@@ -342,8 +355,9 @@ function M.refresh(buf)
     return
   end
 
-  local keys, err = resolve.ensure_lang(project, cfg.preview_lang)
-  if not keys then
+  local view = resolve.view(project, resolve.buf_path(buf))
+  local err = resolve.preview_error(view)
+  if err then
     -- Notify once per project, then stay quiet
     if not project._notified then
       project._notified = true
@@ -351,10 +365,6 @@ function M.refresh(buf)
     end
     M.clear(buf)
     return
-  end
-  local source_keys = nil
-  if cfg.source_lang and cfg.source_lang ~= cfg.preview_lang then
-    source_keys = resolve.ensure_lang(project, cfg.source_lang)
   end
 
   local tick = api.nvim_buf_get_changedtick(buf)
@@ -369,7 +379,7 @@ function M.refresh(buf)
     if m.str_s then
       m.str_row_s, m.str_col_s = util.byte_to_pos(offsets, m.str_s)
     end
-    m.status, m.value, m.in_source = scan.status(m, keys, cfg, source_keys)
+    resolve.classify(view, m)
   end
 
   local st = state[buf]

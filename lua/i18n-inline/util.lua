@@ -1,5 +1,5 @@
 -- Utilities: byte offset <-> (line, col) conversion, rune-safe truncation,
--- display sanitization, file reading and source-tree walking.
+-- display sanitization, file reading, path globs and source-tree walking.
 
 local M = {}
 
@@ -24,33 +24,125 @@ function M.read_file(path)
   return raw
 end
 
--- Source files under `root` whose extension is in `extensions`, skipping
--- directories named in `exclude_dirs`. Sorted; stops early at `limit`.
-function M.walk_files(root, extensions, exclude_dirs, limit)
+function M.has_wildcard(s)
+  return s:find('[%*%?]') ~= nil
+end
+
+-- One path segment of a glob -> anchored Lua pattern; `*` and `?` never
+-- cross a '/'.
+local function segment_pattern(seg)
+  local escaped = seg:gsub('[%^%$%(%)%%%.%[%]%+%-]', '%%%0')
+  escaped = escaped:gsub('%*', '[^/]*'):gsub('%?', '[^/]')
+  return '^' .. escaped .. '$'
+end
+
+M.segment_pattern = segment_pattern
+
+-- Path glob -> predicate over '/'-separated relative paths. `*` and `?`
+-- match within one segment; a `**` segment matches any number of segments,
+-- none included (`src/**/x.tsx` matches `src/x.tsx`).
+function M.path_glob(glob)
+  local pats = {}
+  for seg in glob:gmatch('[^/]+') do
+    pats[#pats + 1] = seg == '**' and true or segment_pattern(seg)
+  end
+  local function match(i, parts, j)
+    while i <= #pats do
+      if pats[i] == true then
+        for k = j, #parts + 1 do
+          if match(i + 1, parts, k) then
+            return true
+          end
+        end
+        return false
+      end
+      if j > #parts or not parts[j]:find(pats[i]) then
+        return false
+      end
+      i, j = i + 1, j + 1
+    end
+    return j > #parts
+  end
+  return function(path)
+    return match(1, vim.split(path, '/', { plain = true, trimempty = true }), 1)
+  end
+end
+
+-- `path` relative to `root` ('' for root itself), or nil when outside it.
+function M.relpath(root, path)
+  if path == root then
+    return ''
+  end
+  if path:sub(1, #root + 1) == root .. '/' then
+    return path:sub(#root + 2)
+  end
+  return nil
+end
+
+-- Source files under `root` whose extension is in `opts.extensions`.
+-- Skipped directories:
+--   - `opts.exclude_dirs` entries. A bare name matches at any depth; an
+--     entry with a '/' is a path glob from root (`src/generated`,
+--     `apps/*/dist`), the way .gitignore reads them.
+--   - with `opts.project_file`, every subdirectory holding its own project
+--     file: that tree belongs to another project.
+-- Sorted; stops early at `opts.limit`. Returns the files and the skipped
+-- project directories.
+function M.walk_files(root, opts)
   local ext_set = {}
-  for _, e in ipairs(extensions or {}) do
+  for _, e in ipairs(opts.extensions or {}) do
     ext_set[e:lower()] = true
   end
-  local excl_set = {}
-  for _, d in ipairs(exclude_dirs or {}) do
-    excl_set[d] = true
+  local excl_names, excl_paths = {}, {}
+  for _, d in ipairs(opts.exclude_dirs or {}) do
+    if d:find('/') then
+      excl_paths[#excl_paths + 1] = M.path_glob(d)
+    else
+      excl_names[d] = true
+    end
   end
-  limit = limit or math.huge
-  local files = {}
-  local function walk(dir)
+  local function excluded(name, rel)
+    if excl_names[name] then
+      return true
+    end
+    for _, matches in ipairs(excl_paths) do
+      if matches(rel) then
+        return true
+      end
+    end
+    return false
+  end
+  local limit = opts.limit or math.huge
+  local marker = opts.project_file
+  local files, projects = {}, {}
+  local function walk(dir, rel)
     local fs = vim.uv.fs_scandir(dir)
     if not fs then
       return
     end
-    while #files < limit do
+    -- list first: a project file can come after the subdirectories
+    local entries = {}
+    while true do
       local name, ftype = vim.uv.fs_scandir_next(fs)
       if not name then
         break
       end
+      if marker and rel ~= '' and name == marker and ftype ~= 'directory' then
+        projects[#projects + 1] = dir
+        return
+      end
+      entries[#entries + 1] = { name, ftype }
+    end
+    for _, entry in ipairs(entries) do
+      if #files >= limit then
+        return
+      end
+      local name, ftype = entry[1], entry[2]
       local path = dir .. '/' .. name
       if ftype == 'directory' then
-        if not excl_set[name] then
-          walk(path)
+        local sub = rel == '' and name or (rel .. '/' .. name)
+        if not excluded(name, sub) then
+          walk(path, sub)
         end
       elseif ftype == 'file' then
         local ext = name:match('%.([%w]+)$')
@@ -60,9 +152,10 @@ function M.walk_files(root, extensions, exclude_dirs, limit)
       end
     end
   end
-  walk(root)
+  walk(root, '')
   table.sort(files)
-  return files
+  table.sort(projects)
+  return files, projects
 end
 
 -- Start byte offset (1-based) of each line. line_offsets[n] starts line n.

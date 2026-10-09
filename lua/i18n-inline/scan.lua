@@ -241,20 +241,10 @@ function M.normalize_placeholders(s)
   return (s:gsub('%z', '%%'))
 end
 
--- Classify a match against a translation key table (a decoded, flat
--- key -> string map; see formats.lua).
--- Returns 'match' | 'mismatch' | 'missing' | 'novalue', the display value,
--- and for 'missing' whether the key exists in the source language (a
--- translation gap rather than an unknown key).
-function M.status(m, keys, cfg, source_keys)
-  cfg = cfg or {}
-  local v = keys and keys[m.key]
-  if v == nil then
-    if source_keys and source_keys[m.key] ~= nil then
-      return 'missing', nil, true
-    end
-    return 'missing', nil
-  end
+-- Compare a match's fallback with the key's value (a string from a decoded
+-- key table). Returns 'match' | 'mismatch' | 'novalue' (no fallback, or
+-- compare = 'none') and the value.
+function M.compare(m, v, cfg)
   if m.fb == nil or cfg.compare == 'none' then
     return 'novalue', v
   end
@@ -266,6 +256,23 @@ function M.status(m, keys, cfg, source_keys)
     return 'match', v
   end
   return 'mismatch', v
+end
+
+-- Classify a match against a translation key table (a decoded, flat
+-- key -> string map; see formats.lua).
+-- Returns 'match' | 'mismatch' | 'missing' | 'novalue', the display value,
+-- and for 'missing' whether the key exists in the source language (a
+-- translation gap rather than an unknown key). resolve.classify is the
+-- catalog-aware version the plugin itself uses.
+function M.status(m, keys, cfg, source_keys)
+  local v = keys and keys[m.key]
+  if v == nil then
+    if source_keys and source_keys[m.key] ~= nil then
+      return 'missing', nil, true
+    end
+    return 'missing', nil
+  end
+  return M.compare(m, v, cfg or {})
 end
 
 return M

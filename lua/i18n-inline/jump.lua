@@ -13,7 +13,8 @@
 --
 -- When the target language lacks the key but the source language has it,
 -- the source file opens instead with a warning — that is where the fix
--- starts.
+-- starts. The file opened belongs to the catalog the key resolved in; a key
+-- only found in another catalog opens that one, with a warning.
 
 local api = vim.api
 local preview = require('i18n-inline.preview')
@@ -45,10 +46,11 @@ local function read_lines(path)
   return raw and vim.split(raw, '\r?\n')
 end
 
--- lnum/col/len of `key` in `lang`'s file, or nil when the file has no line
--- for it (the key may still exist — minified files, unusual formatting).
-local function locate(project, lang, key)
-  local path = project.langs[lang]
+-- lnum/col/len of `key` in `lang`'s file of `catalog`, or nil when the
+-- file has no line for it (the key may still exist — minified files,
+-- unusual formatting).
+local function locate(catalog, lang, key)
+  local path = catalog.langs[lang]
   if not path then
     return nil
   end
@@ -56,11 +58,11 @@ local function locate(project, lang, key)
   if not lines then
     return nil
   end
-  local fmt = formats.for_path(path, project.cfg)
+  local fmt = formats.for_path(path, catalog.cfg)
   if not fmt or not fmt.find_line then
     return nil
   end
-  return fmt.find_line(lines, key, project.cfg)
+  return fmt.find_line(lines, key, catalog.cfg)
 end
 
 -- A buffer extmark, not matchaddpos: a match belongs to the window, so
@@ -100,27 +102,38 @@ local function open_at(open, path, lnum, col, len)
   return true
 end
 
--- Jump to one language, with the missing->source fallback.
-local function jump_lang(project, lang, key, open)
-  local cfg = project.cfg
-  if resolve.value(project, lang, key) ~= nil then
-    local lnum, col, len = locate(project, lang, key)
+-- Jump to one language of `catalog`, with the missing->source fallback.
+-- `note` is reported after a successful open (the key's catalog is not
+-- one this file reads).
+local function jump_lang(catalog, lang, key, open, note)
+  local function opened(path, lnum, col, len)
+    if open_at(open, path, lnum, col, len) then
+      if note then
+        notify(note, vim.log.levels.WARN)
+      end
+      return true
+    end
+    return false
+  end
+
+  if resolve.value(catalog, lang, key) ~= nil then
+    local lnum, col, len = locate(catalog, lang, key)
     if lnum then
-      open_at(open, project.langs[lang], lnum, col, len)
+      opened(catalog.langs[lang], lnum, col, len)
       return
     end
     -- Key exists but no line was located (minified/unusual file): open at top.
-    if open_at(open, project.langs[lang], 1, 1) then
-      notify(('opened %s — could not locate the line for %s'):format(vim.fs.basename(project.langs[lang]), key))
+    if opened(catalog.langs[lang], 1, 1) then
+      notify(('opened %s — could not locate the line for %s'):format(vim.fs.basename(catalog.langs[lang]), key))
     end
     return
   end
 
   -- Missing in the target: point at the source of truth when possible.
-  local src = cfg.source_lang
-  if src and src ~= lang and resolve.value(project, src, key) ~= nil then
-    local lnum, col, len = locate(project, src, key)
-    if open_at(open, project.langs[src], lnum or 1, col or 1, len) then
+  local src = catalog.cfg.source_lang
+  if src and src ~= lang and resolve.value(catalog, src, key) ~= nil then
+    local lnum, col, len = locate(catalog, src, key)
+    if open_at(open, catalog.langs[src], lnum or 1, col or 1, len) then
       notify(('missing in %s — showing %s'):format(lang, src), vim.log.levels.WARN)
     end
     return
@@ -128,21 +141,26 @@ local function jump_lang(project, lang, key, open)
   notify(('key %s not found in %s'):format(key, lang), vim.log.levels.WARN)
 end
 
--- Quickfix variant: one item per language that has the key.
-local function jump_quickfix(project, key)
+-- Quickfix variant: one item per language that has the key, in every
+-- catalog the popover would show.
+local function jump_quickfix(project, holders, key)
   local items, missing = {}, {}
-  for _, lang in ipairs(resolve.sorted_langs(project)) do
-    local value = resolve.value(project, lang, key)
-    if value == nil then
-      missing[#missing + 1] = lang
-    else
-      local lnum, col = locate(project, lang, key)
-      items[#items + 1] = {
-        filename = project.langs[lang],
-        lnum = lnum or 1,
-        col = col or 1,
-        text = ('%s  %s'):format(key, util.quote(value)),
-      }
+  local labeled = #project.catalogs > 1
+  for _, catalog in ipairs(holders) do
+    for _, lang in ipairs(resolve.sorted_langs(catalog)) do
+      local value = resolve.value(catalog, lang, key)
+      local name = labeled and ('%s:%s'):format(catalog.label, lang) or lang
+      if value == nil then
+        missing[#missing + 1] = name
+      else
+        local lnum, col = locate(catalog, lang, key)
+        items[#items + 1] = {
+          filename = catalog.langs[lang],
+          lnum = lnum or 1,
+          col = col or 1,
+          text = ('%s  %s'):format(key, util.quote(value)),
+        }
+      end
     end
   end
   if #items == 0 then
@@ -168,31 +186,40 @@ function M.jump(opts)
   local cfg = project.cfg
   local jcfg = cfg.jump or {}
   local open = opts.bang and 'quickfix' or (jcfg.open or 'edit')
+  local view = resolve.view(project, resolve.buf_path(0))
+  local holders = resolve.holders(view, m)
 
   if open == 'quickfix' then
-    jump_quickfix(project, m.key)
+    jump_quickfix(project, holders, m.key)
     return
+  end
+
+  -- The catalog the key resolved in, else the first that has it.
+  local catalog = m.catalog or holders[1]
+  local note
+  if m.elsewhere and catalog == m.elsewhere[1] then
+    note = ('%s is not in the catalogs this file reads — opened %s'):format(m.key, catalog.label)
   end
 
   local lang
   if opts.lang then
     lang = opts.lang
   elseif jcfg.lang == 'ask' then
-    vim.ui.select(resolve.sorted_langs(project), { prompt = 'i18n jump to language:' }, function(choice)
+    vim.ui.select(resolve.sorted_langs(catalog), { prompt = 'i18n jump to language:' }, function(choice)
       if choice then
-        jump_lang(project, choice, m.key, open)
+        jump_lang(catalog, choice, m.key, open, note)
       end
     end)
     return
   else
     lang = jcfg.lang == 'source' and cfg.source_lang or cfg.preview_lang
   end
-  if not lang or not project.langs[lang] then
+  if not lang or not catalog.langs[lang] then
     notify(('no translation file for "%s" (available: %s)')
-      :format(tostring(lang), table.concat(resolve.sorted_langs(project), ', ')), vim.log.levels.WARN)
+      :format(tostring(lang), table.concat(resolve.sorted_langs(catalog), ', ')), vim.log.levels.WARN)
     return
   end
-  jump_lang(project, lang, m.key, open)
+  jump_lang(catalog, lang, m.key, open, note)
 end
 
 return M

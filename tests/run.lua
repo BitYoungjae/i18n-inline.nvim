@@ -189,8 +189,10 @@ t('config.merge_project overrides and validates', function()
   local _, err2 = config.merge_project({ patterns = { 42 } })
   ok_(err2:match('patterns') ~= nil, 'expected validation error, got: ' .. tostring(err2))
 
-  local _, err3 = config.merge_project({ file_template = '%s.json' })
-  ok_(err3:match('languages') ~= nil)
+  -- file_template alone is fine now (its files name the languages)
+  ok_(config.merge_project({ file_template = '%s.json' }) ~= nil, 'file_template without languages rejected')
+  local _, err3 = config.merge_project({ dir = 'x', catalogs = { 'y' } })
+  ok_(err3:match('dir or catalogs') ~= nil, tostring(err3))
 end)
 
 -- ===== resolve + project file =====
@@ -204,16 +206,16 @@ t('resolve: project file discovered and merged', function()
   })
   local project = resolve.project_from(root .. '/src/app/core.cljs')
   ok_(project ~= nil, 'project not found')
-  eq(project.dir, vim.fs.normalize(root .. '/tr'))
+  eq(project.catalogs[1].dir, vim.fs.normalize(root .. '/tr'))
   eq(project.cfg.preview_lang, 'ko')
 
-  local keys = resolve.ensure_lang(project, 'ko')
+  local keys = resolve.ensure_lang(project.catalogs[1], 'ko')
   eq(keys.hello, '안녕')
-  local en = resolve.ensure_lang(project, 'en')
+  local en = resolve.ensure_lang(project.catalogs[1], 'en')
   eq(en.hello, 'Hello')
 
   -- missing language file
-  local _, err = resolve.ensure_lang(project, 'fr')
+  local _, err = resolve.ensure_lang(project.catalogs[1], 'fr')
   ok_(err:match('fr') ~= nil)
 end)
 
@@ -469,6 +471,10 @@ dofile(here .. '/generalization.lua')(t, eq, ok_, make_project)
 -- ===== review-pass regressions (one per reproduced defect) =====
 
 dofile(here .. '/regressions.lua')(t, eq, ok_, make_project, vim.fs.normalize(vim.fn.fnamemodify(here .. '/..', ':p')))
+
+-- ===== catalogs (several translation directories per project) =====
+
+dofile(here .. '/catalogs.lua')(t, eq, ok_, make_project)
 
 -- ===== real-repo smoke (optional, I18N_SMOKE_REPO) =====
 
