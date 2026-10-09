@@ -101,9 +101,10 @@ local function json_leaf_positions(lines)
         stack[#stack] = nil
       end
     end
-    local ind, opening, key = line:match('^(%s*)"([^"]+)"%s*:%s*([%[{]?)')
+    local ind, key, opening = line:match('^(%s*)"([^"]+)"%s*:%s*([%[{]?)')
     if key then
-      if opening == '{' and not line:match('%{%s*%}%s*,?%s*$') then
+      -- only an object the line leaves open nests the lines below it
+      if opening == '{' and line:match('{%s*$') then
         stack[#stack + 1] = { indent = indent, key = key }
       elseif opening == '' then
         local segs = {}

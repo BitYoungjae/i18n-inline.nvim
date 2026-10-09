@@ -566,4 +566,24 @@ return function(t, eq, ok_, make_project, plugin_dir)
     eq(out['one'], '하나')
     eq(out['Logic'], '로직')
   end)
+  -- ===== json jump =====
+
+  t('regression: json find_line follows the structure to the right key', function()
+    local lines = {
+      '{',
+      '  "Home": {',
+      '    "title": "홈",',
+      '    "g": { "h": "x" },',
+      '    "after": "y"',
+      '  },',
+      '  "Billing": {',
+      '    "title": "결제"',
+      '  }',
+      '}',
+    }
+    local find = formats.registry.json.find_line
+    eq({ find(lines, 'Billing.title', { separator = '.' }) }, { 8, 5, 7 })
+    -- an inline object opens no level for the lines after it
+    eq({ find(lines, 'Home.after', { separator = '.' }) }, { 5, 5, 7 })
+  end)
 end
