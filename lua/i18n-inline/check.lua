@@ -72,7 +72,11 @@ local function missing_text(m, cfg, view)
   if m.in_source then
     return ('missing in %s :%s — present in %s'):format(cfg.preview_lang, m.key, cfg.source_lang)
   elseif m.elsewhere then
-    return ('missing key :%s — only in %s; this file reads %s'):format(m.key, labels(m.elsewhere), labels(view.catalogs))
+    return ('missing key :%s — only in %s; this file reads %s'):format(
+      m.key,
+      labels(m.elsewhere),
+      labels(view.catalogs)
+    )
   elseif m.fb then
     return ('missing key :%s — fallback %s'):format(m.key, util.quote(m.fb))
   end
@@ -160,12 +164,23 @@ local function report_unused(project, groups, headless)
   if #project.catalogs == 1 then
     local g = groups[1]
     -- ten fit a message line; a headless run keeps all of them
-    echo(('[i18n-inline] %s in "%s" not referenced by any scan: %s')
-      :format(count(#g.keys, 'key', 'keys'), g.lang, shown(g.keys, headless and #g.keys or 10)))
+    echo(
+      ('[i18n-inline] %s in "%s" not referenced by any scan: %s'):format(
+        count(#g.keys, 'key', 'keys'),
+        g.lang,
+        shown(g.keys, headless and #g.keys or 10)
+      )
+    )
   elseif headless then
     for _, g in ipairs(groups) do
-      echo(('[i18n-inline] %s in "%s" of %s not referenced by any scan: %s')
-        :format(count(#g.keys, 'key', 'keys'), g.lang, g.catalog.label, shown(g.keys, #g.keys)))
+      echo(
+        ('[i18n-inline] %s in "%s" of %s not referenced by any scan: %s'):format(
+          count(#g.keys, 'key', 'keys'),
+          g.lang,
+          g.catalog.label,
+          shown(g.keys, #g.keys)
+        )
+      )
     end
   else
     -- one line on screen (more would stop at a hit-enter prompt)
@@ -177,8 +192,13 @@ local function report_unused(project, groups, headless)
         budget = budget - math.min(#g.keys, budget)
       end
     end
-    echo(('[i18n-inline] %s not referenced by any scan: %s%s')
-      :format(count(total, 'key', 'keys'), table.concat(parts, '; '), #parts < #groups and ' …' or ''))
+    echo(
+      ('[i18n-inline] %s not referenced by any scan: %s%s'):format(
+        count(total, 'key', 'keys'),
+        table.concat(parts, '; '),
+        #parts < #groups and ' …' or ''
+      )
+    )
   end
 end
 
@@ -311,8 +331,12 @@ function M.check(buf)
             local row, col = util.byte_to_pos(offsets, m.call_s)
             local desc
             if status == 'mismatch' then
-              desc = ('mismatch :%s — code %s vs %s %s')
-                :format(m.key, util.quote(m.fb), pcfg.preview_lang, util.quote(m.value))
+              desc = ('mismatch :%s — code %s vs %s %s'):format(
+                m.key,
+                util.quote(m.fb),
+                pcfg.preview_lang,
+                util.quote(m.value)
+              )
             else
               desc = missing_text(m, pcfg, view)
               if m.elsewhere then

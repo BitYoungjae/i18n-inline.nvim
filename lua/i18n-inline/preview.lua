@@ -169,9 +169,13 @@ function M.schedule(buf)
   end
   st.timer:stop()
   local cfg = st.project and st.project.cfg or config.get()
-  st.timer:start(cfg.debounce_ms, 0, vim.schedule_wrap(function()
-    M.refresh(buf)
-  end))
+  st.timer:start(
+    cfg.debounce_ms,
+    0,
+    vim.schedule_wrap(function()
+      M.refresh(buf)
+    end)
+  )
 end
 
 local function clear_marks(buf, st)

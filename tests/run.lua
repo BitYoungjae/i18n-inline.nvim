@@ -70,7 +70,19 @@ end
 -- ===== module loads =====
 
 t('modules load', function()
-  for _, m in ipairs({ 'config', 'util', 'formats', 'presets', 'scan', 'resolve', 'preview', 'hover', 'jump', 'check', 'health' }) do
+  for _, m in ipairs({
+    'config',
+    'util',
+    'formats',
+    'presets',
+    'scan',
+    'resolve',
+    'preview',
+    'hover',
+    'jump',
+    'check',
+    'health',
+  }) do
     ok_(type(require('i18n-inline.' .. m)) == 'table', 'failed to load i18n-inline.' .. m)
   end
 end)
@@ -406,10 +418,8 @@ t('hover: popover lists every language', function()
 
   ok_(hover_ok, tostring(hover_err))
   ok_(float_win ~= nil, 'no floating window opened')
-  ok_(float_content ~= nil and float_content:match('Confirm') ~= nil,
-    'en value missing:\n' .. tostring(float_content))
-  ok_(float_content ~= nil and float_content:match('確認') ~= nil,
-    'ja value missing:\n' .. tostring(float_content))
+  ok_(float_content ~= nil and float_content:match('Confirm') ~= nil, 'en value missing:\n' .. tostring(float_content))
+  ok_(float_content ~= nil and float_content:match('確認') ~= nil, 'ja value missing:\n' .. tostring(float_content))
   ok_(float_content ~= nil and float_content:match('fallback:') ~= nil)
 end)
 
@@ -536,8 +546,15 @@ if smoke_repo and smoke_repo ~= '' then
       end
     end
     local ms = (uv.hrtime() - t0) / 1e6
-    print(('       scanned %d files: %d calls, %d mismatches, %d missing (%.0f ms)')
-      :format(#files, total, mismatch, missing, ms))
+    print(
+      ('       scanned %d files: %d calls, %d mismatches, %d missing (%.0f ms)'):format(
+        #files,
+        total,
+        mismatch,
+        missing,
+        ms
+      )
+    )
     ok_(total > 1000, ('too few matches: %d'):format(total))
     ok_(mismatch > 0, 'expected some mismatches in the real repo')
     ok_(ms < 10000, 'scan too slow')

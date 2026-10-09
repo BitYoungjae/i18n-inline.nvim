@@ -157,7 +157,14 @@ return function(t, eq, ok_, make_project)
     eq(merged.key_style, 'flat')
     -- context.l10n.key resolves; the l10n.dart import line is not a lookup
     local keys = {}
-    for _, m in ipairs(scan.scan("import 'package:app/l10n/l10n.dart';\nText(context.l10n.helloWorld);\nfinal l10n = context.l10n;\nl10n.bye;", merged)) do
+    for _, m in
+      ipairs(
+        scan.scan(
+          "import 'package:app/l10n/l10n.dart';\nText(context.l10n.helloWorld);\nfinal l10n = context.l10n;\nl10n.bye;",
+          merged
+        )
+      )
+    do
       keys[#keys + 1] = m.key
     end
     eq(keys, { 'helloWorld', 'bye' })
@@ -211,7 +218,7 @@ return function(t, eq, ok_, make_project)
 
   -- ===== R1.3 namespace composition + R3.2 aliases =====
 
-  local JS_CALL = "([%w_.$]+)%s*%(%s*['\"]([^'\"\n]+)['\"]"
+  local JS_CALL = '([%w_.$]+)%s*%(%s*[\'"]([^\'"\n]+)[\'"]'
   local NEXT_BIND = {
     "([%w_]+)%s*=%s*[%w_.%s]-useTranslations%(%s*'([^']*)'%s*%)",
     "([%w_]+)%s*=%s*[%w_.%s]-getTranslations%(%s*'([^']*)'%s*%)",
@@ -221,7 +228,7 @@ return function(t, eq, ok_, make_project)
     local src = table.concat({
       "const t = useTranslations('error');",
       "const tCommon = await getTranslations('common');",
-      "const other = getTranslations(SOME_CONST);",
+      'const other = getTranslations(SOME_CONST);',
       "t('retry');",
       "tCommon('orderType.invoice');",
       "other('x');",
@@ -240,8 +247,8 @@ return function(t, eq, ok_, make_project)
 
   t('scan: root binding passes subkey through; alias-only key used as-is', function()
     local src = table.concat({
-      "const { t } = useTranslations();", -- root (i18next shape via alias test below)
-      "const tt = await getTranslations();",
+      'const { t } = useTranslations();', -- root (i18next shape via alias test below)
+      'const tt = await getTranslations();',
       'tt("deep.key");',
       "t('plain.key');",
     }, '\n')
@@ -278,7 +285,11 @@ return function(t, eq, ok_, make_project)
       'i18n.t("shop.cart.title");',
       't.raw("raw.key");',
     }, '\n')
-    local ms = scan.scan(src, { patterns = { JS_CALL }, aliases = presets.get('i18next').aliases, namespace_patterns = presets.get('i18next').namespace_patterns })
+    local ms = scan.scan(src, {
+      patterns = { JS_CALL },
+      aliases = presets.get('i18next').aliases,
+      namespace_patterns = presets.get('i18next').namespace_patterns,
+    })
     local keys = {}
     for _, m in ipairs(ms) do
       keys[#keys + 1] = m.key
@@ -319,16 +330,16 @@ return function(t, eq, ok_, make_project)
 
   t('scan: prop fallback finds defaultMessage past description', function()
     local src = table.concat({
-      "const messages = defineMessages({",
-      "  intro: {",
+      'const messages = defineMessages({',
+      '  intro: {',
       "    id: 'intro-id',",
       "    description: 'shown on the landing page',",
       "    defaultMessage: 'Welcome aboard',",
-      "  },",
+      '  },',
       '});',
     }, '\n')
     local ms = scan.scan(src, {
-      patterns = { "id%s*:%s*['\"]([^'\"\n]+)['\"]" },
+      patterns = { 'id%s*:%s*[\'"]([^\'"\n]+)[\'"]' },
       fallback_style = 'prop',
       fallback_props = { 'defaultMessage' },
     })
@@ -721,7 +732,6 @@ return function(t, eq, ok_, make_project)
     ok_(float_win ~= nil, 'no floating window opened')
   end)
 
-
   -- ===== :I18nJump (jump to the translation file line) =====
 
   t('formats: json find_line locates flat, nested, and literal-dot keys', function()
@@ -735,7 +745,7 @@ return function(t, eq, ok_, make_project)
       '  },',
       '  "empty": {},',
       '  "sibling": "v3"',
-      '}'
+      '}',
     }
     local find = formats.registry.json.find_line
     -- (lnum, col, len): len covers the quoted token on that line — the
@@ -928,7 +938,6 @@ return function(t, eq, ok_, make_project)
     api.nvim_win_close(win, true)
     api.nvim_buf_delete(buf, { force = true })
   end)
-
 
   t('jump E2E: explicit lang argument overrides jump.lang', function()
     reset_all()

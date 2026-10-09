@@ -152,14 +152,16 @@ end
 
 -- Unescape a gettext string literal body: \\, \", \n, \t.
 local function po_unescape(s)
-  return (s:gsub('\\(.)', function(c)
-    if c == 'n' then
-      return '\n'
-    elseif c == 't' then
-      return '\t'
-    end
-    return c
-  end))
+  return (
+    s:gsub('\\(.)', function(c)
+      if c == 'n' then
+        return '\n'
+      elseif c == 't' then
+        return '\t'
+      end
+      return c
+    end)
+  )
 end
 
 -- Minimal gettext .po parser: msgid/msgstr pairs with continuation lines,

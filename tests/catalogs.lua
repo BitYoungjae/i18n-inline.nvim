@@ -21,7 +21,7 @@ return function(t, eq, ok_, make_project)
   local jump = require('i18n-inline.jump')
   local check = require('i18n-inline.check')
 
-  local FM = "formatMessage%s*%(%s*{%s*id%s*:%s*['\"]([^'\"\n]+)['\"]"
+  local FM = 'formatMessage%s*%(%s*{%s*id%s*:%s*[\'"]([^\'"\n]+)[\'"]'
   local LANGS = { 'en', 'ko' }
 
   local function reset_all()
@@ -111,9 +111,12 @@ return function(t, eq, ok_, make_project)
     vim.fn.setqflist({}, ' ', { title = '' })
     local before = #vim.split(vim.fn.execute('messages'), '\n')
     check.check(buf)
-    ok_(vim.wait(5000, function()
-      return vim.fn.getqflist({ title = 1 }).title == 'i18n audit'
-    end, 20), 'audit never finished')
+    ok_(
+      vim.wait(5000, function()
+        return vim.fn.getqflist({ title = 1 }).title == 'i18n audit'
+      end, 20),
+      'audit never finished'
+    )
     local msgs = vim.split(vim.fn.execute('messages'), '\n')
     return vim.fn.getqflist(), vim.list_slice(msgs, before + 1)
   end
@@ -127,7 +130,8 @@ return function(t, eq, ok_, make_project)
         out[#out + 1] = kind .. ': ' .. msg
       end
     end
-    vim.health = { start = function() end, ok = rec('ok'), warn = rec('warn'), error = rec('error'), info = rec('info') }
+    vim.health =
+      { start = function() end, ok = rec('ok'), warn = rec('warn'), error = rec('error'), info = rec('info') }
     local buf = api.nvim_create_buf(true, false)
     local prev = api.nvim_get_current_buf()
     api.nvim_set_current_buf(buf)
@@ -273,7 +277,10 @@ return function(t, eq, ok_, make_project)
     eq(reads('src/emails/shared/components/footer.tsx'), { 'shared/messages' })
     eq(reads('src/emails/shared/components/stock.tsx'), { 'stock_all/messages', 'stock_location/messages' })
     -- outside every home: all of them, in declaration order
-    eq(reads('src/lib/format.ts'), { 'order/messages', 'stock_all/messages', 'stock_location/messages', 'shared/messages' })
+    eq(
+      reads('src/lib/format.ts'),
+      { 'order/messages', 'stock_all/messages', 'stock_location/messages', 'shared/messages' }
+    )
   end)
 
   t('catalogs_for: a home climbs past folders with no other catalog; a uses directory covers its files', function()
@@ -335,10 +342,13 @@ return function(t, eq, ok_, make_project)
     eq({ h.status, h.value, h.catalog.label }, { 'novalue', '주문', 'order/messages' })
   end)
 
-  t('find: a key only in a catalog\'s source language is a translation gap there', function()
+  t("find: a key only in a catalog's source language is a translation gap there", function()
     reset_all()
     local root = email_repo()
-    write(root .. '/src/emails/order/messages/en.json', vim.json.encode({ heading = 'Order', cta = 'Open', extra = 'E' }))
+    write(
+      root .. '/src/emails/order/messages/en.json',
+      vim.json.encode({ heading = 'Order', cta = 'Open', extra = 'E' })
+    )
     local p = resolve.project_from(root)
     local m = { key = 'extra' }
     resolve.classify(resolve.view(p, root .. '/src/emails/order/index.tsx'), m)
@@ -357,7 +367,9 @@ return function(t, eq, ok_, make_project)
       vim.bo[buf].filetype = 'typescriptreact'
       preview.refresh(buf)
       local out = {}
-      for _, mark in ipairs(api.nvim_buf_get_extmarks(buf, api.nvim_create_namespace('i18n_inline'), 0, -1, { details = true })) do
+      for _, mark in
+        ipairs(api.nvim_buf_get_extmarks(buf, api.nvim_create_namespace('i18n_inline'), 0, -1, { details = true }))
+      do
         out[#out + 1] = vim.trim(mark[4].virt_text[1][1])
       end
       api.nvim_buf_delete(buf, { force = true })
@@ -367,15 +379,18 @@ return function(t, eq, ok_, make_project)
     eq(inline(), { '✗ only in order/messages +2', '✗ only in stock_all/messages +1', '✗ key not found' })
 
     reset_all()
-    write(root .. '/.i18n-inline.json', vim.json.encode({
-      preview_lang = 'ko',
-      source_lang = 'en',
-      filetypes = { 'typescriptreact' },
-      patterns = { FM },
-      fallback_style = 'none',
-      catalogs = { 'src/emails/*/messages', { dir = 'src/emails/shared/messages', file_template = 'footer-%s.json' } },
-      uses = { ['src/emails/shared/components/stock.tsx'] = { 'src/emails/stock_*/messages' } },
-    }))
+    write(
+      root .. '/.i18n-inline.json',
+      vim.json.encode({
+        preview_lang = 'ko',
+        source_lang = 'en',
+        filetypes = { 'typescriptreact' },
+        patterns = { FM },
+        fallback_style = 'none',
+        catalogs = { 'src/emails/*/messages', { dir = 'src/emails/shared/messages', file_template = 'footer-%s.json' } },
+        uses = { ['src/emails/shared/components/stock.tsx'] = { 'src/emails/stock_*/messages' } },
+      })
+    )
     eq(inline(), { '전체', '부족', '✗ key not found' })
   end)
 
@@ -446,7 +461,10 @@ return function(t, eq, ok_, make_project)
   t('check E2E: one project file audits every catalog; "only in" counted apart', function()
     reset_all()
     local root = email_repo()
-    write(root .. '/src/emails/order/messages/en.json', vim.json.encode({ heading = 'Order', cta = 'Open', unusedKey = 'U' }))
+    write(
+      root .. '/src/emails/order/messages/en.json',
+      vim.json.encode({ heading = 'Order', cta = 'Open', unusedKey = 'U' })
+    )
     local items, msgs = audit(vim.fn.bufadd(root .. '/src/emails/order/index.tsx'))
     local texts = {}
     for i, it in ipairs(items) do
@@ -489,13 +507,16 @@ return function(t, eq, ok_, make_project)
 
   t('check E2E: a root project skips nested projects without exclude_dirs', function()
     reset_all()
-    local root = tree({ dir = 'shared', patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' }, check = { extensions = { 'cljs' } } }, {
-      ['shared/ko.json'] = { a = 'v' },
-      ['src/a.cljs'] = '(tr [:a])\n',
-      ['sub/.i18n-inline.json'] = { dir = 'tr' },
-      ['sub/tr/ko.json'] = { b = 'w' },
-      ['sub/b.cljs'] = '(tr [:b])\n',
-    })
+    local root = tree(
+      { dir = 'shared', patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' }, check = { extensions = { 'cljs' } } },
+      {
+        ['shared/ko.json'] = { a = 'v' },
+        ['src/a.cljs'] = '(tr [:a])\n',
+        ['sub/.i18n-inline.json'] = { dir = 'tr' },
+        ['sub/tr/ko.json'] = { b = 'w' },
+        ['sub/b.cljs'] = '(tr [:b])\n',
+      }
+    )
     local items, msgs = audit(vim.fn.bufadd(root .. '/src/a.cljs'))
     eq(#items, 0)
     ok_(find_line(msgs, 'skipped 1 nested project'), vim.inspect(msgs))
@@ -512,7 +533,8 @@ return function(t, eq, ok_, make_project)
     for i = 1, 60 do
       files[('src/noise/f%02d.cljs'):format(i)] = '(println "no calls")\n'
     end
-    local root = tree({ dir = 'tr', patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' }, check = { extensions = { 'cljs' } } }, files)
+    local root =
+      tree({ dir = 'tr', patterns = { '%(tr%s*%[%s*:([%w%.%-_/]+)' }, check = { extensions = { 'cljs' } } }, files)
     local out = health(root)
     ok_(find_line(out, '^ok: scanned 61 files: 1 calls in 1 files, 1/1 resolve'), table.concat(out, '\n'))
     ok_(not find_line(out, '^warn'), table.concat(out, '\n'))
@@ -524,9 +546,24 @@ return function(t, eq, ok_, make_project)
     local out = health(root)
     ok_(find_line(out, '^ok: 4 catalogs'), table.concat(out, '\n'))
     ok_(find_line(out, '^ok: shared/messages: 2 languages, "ko" 1 key$'), table.concat(out, '\n'))
-    ok_(find_line(out, '^warn: 2 calls use keys found only in catalogs their file doesn\'t read: src/emails/shared/components/stock%.tsx %(2%).*`uses`'), table.concat(out, '\n'))
-    ok_(find_line(out, '^info: 1 call uses keys no catalog has, e%.g%. nowhere %(src/emails/shared/components/stock%.tsx:3%)'), table.concat(out, '\n'))
-    ok_(find_line(out, '^warn: uses%["src/nothing%.tsx"%]: "no/such/messages" matches no catalog'), table.concat(out, '\n'))
+    ok_(
+      find_line(
+        out,
+        "^warn: 2 calls use keys found only in catalogs their file doesn't read: src/emails/shared/components/stock%.tsx %(2%).*`uses`"
+      ),
+      table.concat(out, '\n')
+    )
+    ok_(
+      find_line(
+        out,
+        '^info: 1 call uses keys no catalog has, e%.g%. nowhere %(src/emails/shared/components/stock%.tsx:3%)'
+      ),
+      table.concat(out, '\n')
+    )
+    ok_(
+      find_line(out, '^warn: uses%["src/nothing%.tsx"%]: "no/such/messages" matches no catalog'),
+      table.concat(out, '\n')
+    )
     ok_(not find_line(out, 'none resolve'), table.concat(out, '\n'))
   end)
 

@@ -9,7 +9,7 @@ local M = {}
 -- Call pattern shared by the JS stacks: capture (receiver, subkey). The
 -- receiver filter (aliases ∪ namespace bindings) turns this permissive
 -- pattern into a precise one.
-local JS_CALL = "([%w_.$]+)%s*%(%s*['\"]([^'\"\n]+)['\"]"
+local JS_CALL = '([%w_.$]+)%s*%(%s*[\'"]([^\'"\n]+)[\'"]'
 
 -- gettext keys are source text, where apostrophes and quotes are common
 -- ("Don't panic"): one pattern per quote style, so the key runs to the
@@ -39,9 +39,9 @@ M.presets = {
     -- Non-literal namespaces (getTranslations(SOME_CONST)) do not bind, so
     -- calls through those receivers are dropped rather than mis-resolved.
     namespace_patterns = {
-      BIND .. "([%w_]+)[ \t]*=[ \t]*" .. BRIDGE .. "useTranslations%(%s*'([^']*)'%s*%)",
+      BIND .. '([%w_]+)[ \t]*=[ \t]*' .. BRIDGE .. "useTranslations%(%s*'([^']*)'%s*%)",
       BIND .. '([%w_]+)[ \t]*=[ \t]*' .. BRIDGE .. 'useTranslations%(%s*"([^"]*)"%s*%)',
-      BIND .. "([%w_]+)[ \t]*=[ \t]*" .. BRIDGE .. "getTranslations%(%s*'([^']*)'%s*%)",
+      BIND .. '([%w_]+)[ \t]*=[ \t]*' .. BRIDGE .. "getTranslations%(%s*'([^']*)'%s*%)",
       BIND .. '([%w_]+)[ \t]*=[ \t]*' .. BRIDGE .. 'getTranslations%(%s*"([^"]*)"%s*%)',
       BIND .. '([%w_]+)[ \t]*=[ \t]*' .. BRIDGE .. 'useTranslations%(%s*%)', -- root
     },
@@ -59,7 +59,7 @@ M.presets = {
     -- const { t } = useTranslation('ns') (object and array destructuring,
     -- both quote styles, plus the no-namespace root form).
     namespace_patterns = {
-      BIND .. "%{[ \t]*([%w_]+)[ \t]*[^%}\n]*%}[ \t]*=[ \t]*" .. BRIDGE .. "useTranslation%(%s*'([^']*)'%s*%)",
+      BIND .. '%{[ \t]*([%w_]+)[ \t]*[^%}\n]*%}[ \t]*=[ \t]*' .. BRIDGE .. "useTranslation%(%s*'([^']*)'%s*%)",
       BIND .. '%{[ \t]*([%w_]+)[ \t]*[^%}\n]*%}[ \t]*=[ \t]*' .. BRIDGE .. 'useTranslation%(%s*"([^"]*)"%s*%)',
       BIND .. '%{[ \t]*([%w_]+)[ \t]*[^%}\n]*%}[ \t]*=[ \t]*' .. BRIDGE .. 'useTranslation%(%s*%)',
       BIND .. '%[[ \t]*([%w_]+)[ \t]*[^%]\n]*%][ \t]*=[ \t]*' .. BRIDGE .. 'useTranslation%(%s*%)',
@@ -97,7 +97,7 @@ M.presets = {
       'AppLocalizations%.of%([^)]*%)%!?%.([%w_]+)', -- AppLocalizations.of(context)!.key
       -- context.l10n.key / l10n.key. The trailing frontier rejects a key
       -- followed by a quote: `import '…/l10n/l10n.dart'` is not a lookup.
-      "%f[%w_]l10n%.([%w_]+)%f[^%w_'\"]",
+      '%f[%w_]l10n%.([%w_]+)%f[^%w_\'"]',
     },
     key_style = 'flat',
     fallback_style = 'none',
@@ -112,7 +112,17 @@ M.presets = {
   -- literal, so there is nothing to compare against the msgstr — value
   -- preview and missing/untranslated detection only.
   gettext = {
-    filetypes = { 'python', 'javascript', 'typescript', 'typescriptreact', 'javascriptreact', 'ruby', 'php', 'c', 'cpp' },
+    filetypes = {
+      'python',
+      'javascript',
+      'typescript',
+      'typescriptreact',
+      'javascriptreact',
+      'ruby',
+      'php',
+      'c',
+      'cpp',
+    },
     patterns = { CALL_DQ, CALL_SQ },
     aliases = { 't', '_', 'gettext', '__', 'ngettext' },
     key_style = 'flat',

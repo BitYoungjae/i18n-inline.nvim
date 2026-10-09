@@ -68,8 +68,9 @@ local function check_key_style(catalog)
   end
   if has_table then
     vim.health.warn(
-      ('%s contains nested objects but key_style is "flat" — dotted keys in code will not resolve. Add "key_style": "nested" to the project file.')
-        :format(vim.fs.basename(path))
+      ('%s contains nested objects but key_style is "flat" — dotted keys in code will not resolve. Add "key_style": "nested" to the project file.'):format(
+        vim.fs.basename(path)
+      )
     )
   end
 end
@@ -181,8 +182,10 @@ local function check_calls(project)
   end
   if #walked == 0 then
     vim.health.warn(
-      ('no files matching check.extensions (%s) found under %s')
-        :format(table.concat(cfg.check.extensions, ', '), project.root)
+      ('no files matching check.extensions (%s) found under %s'):format(
+        table.concat(cfg.check.extensions, ', '),
+        project.root
+      )
     )
     return
   end
@@ -227,8 +230,17 @@ local function check_calls(project)
 
   local rate = s.calls > 0 and math.floor(s.resolved / s.calls * 100) or 100
   local bind_msg = s.bindings > 0 and (', %d namespace bindings'):format(s.bindings) or ''
-  vim.health.ok(('scanned %d files: %d calls in %d files%s, %d/%d resolve (%d%%)')
-    :format(s.files, s.calls, s.with_calls, bind_msg, s.resolved, s.calls, rate))
+  vim.health.ok(
+    ('scanned %d files: %d calls in %d files%s, %d/%d resolve (%d%%)'):format(
+      s.files,
+      s.calls,
+      s.with_calls,
+      bind_msg,
+      s.resolved,
+      s.calls,
+      rate
+    )
+  )
   if s.files < #walked then
     vim.health.info(('stopped after %d ms: scanned %d of %d files'):format(BUDGET_MS, s.files, #walked))
   end
@@ -252,23 +264,32 @@ local function check_calls(project)
       shown[i] = ('%s (%d)'):format(list[i][1], list[i][2])
     end
     vim.health.warn(
-      ('%s keys found only in catalogs their file doesn\'t read: %s%s — a file that gets its messages from those catalogs at runtime (props, a shared component) needs a `uses` entry; otherwise the key is missing from its own catalog')
-        :format(s.elsewhere == 1 and '1 call uses' or (s.elsewhere .. ' calls use'), table.concat(shown, ', '), #list > EXAMPLES and ', …' or '')
+      ("%s keys found only in catalogs their file doesn't read: %s%s — a file that gets its messages from those catalogs at runtime (props, a shared component) needs a `uses` entry; otherwise the key is missing from its own catalog"):format(
+        s.elsewhere == 1 and '1 call uses' or (s.elsewhere .. ' calls use'),
+        table.concat(shown, ', '),
+        #list > EXAMPLES and ', …' or ''
+      )
     )
   end
   if s.resolved == 0 and s.elsewhere == 0 then
     vim.health.warn(
-      ('keys matched but none resolve (e.g. %s) — likely an addressing mismatch: try "key_style": "nested", check `separator`, or namespace bindings')
-        :format(table.concat(examples, ', '))
+      ('keys matched but none resolve (e.g. %s) — likely an addressing mismatch: try "key_style": "nested", check `separator`, or namespace bindings'):format(
+        table.concat(examples, ', ')
+      )
     )
   elseif s.unresolved > 0 then
-    vim.health.info(('%s keys no catalog has, e.g. %s (the audit lists them all)')
-      :format(s.unresolved == 1 and '1 call uses' or (s.unresolved .. ' calls use'), table.concat(examples, ', ')))
+    vim.health.info(
+      ('%s keys no catalog has, e.g. %s (the audit lists them all)'):format(
+        s.unresolved == 1 and '1 call uses' or (s.unresolved .. ' calls use'),
+        table.concat(examples, ', ')
+      )
+    )
     if #nested > 0 then
       -- lookups never cross projects: a shared file can't see the nested ones'
       vim.health.info(
-        ('keys are not looked up in the nested projects\' catalogs; to share them, list every catalog in this %s (`catalogs`) and drop the nested files')
-          :format(cfg.project_file)
+        ("keys are not looked up in the nested projects' catalogs; to share them, list every catalog in this %s (`catalogs`) and drop the nested files"):format(
+          cfg.project_file
+        )
       )
     end
   end
@@ -284,7 +305,9 @@ function M.check()
     vim.health.error('Neovim 0.10+ is required (vim.uv API)')
   end
   if not require('i18n-inline').is_setup() then
-    vim.health.warn('setup() has not run: no inline previews (the commands still work). Call require("i18n-inline").setup() or use `opts` with lazy.nvim')
+    vim.health.warn(
+      'setup() has not run: no inline previews (the commands still work). Call require("i18n-inline").setup() or use `opts` with lazy.nvim'
+    )
   end
 
   -- Prefer the current buffer's project; fall back to the cwd's.
@@ -292,8 +315,12 @@ function M.check()
   local project = resolve.project_for(buf) or resolve.project_from(vim.uv.cwd() or '.')
   if not project then
     local cwd = vim.uv.cwd() or '.'
-    vim.health.warn(('no translation project found from %s (check `dir`/`catalogs` or add a %s)')
-      :format(cwd, config.get().project_file))
+    vim.health.warn(
+      ('no translation project found from %s (check `dir`/`catalogs` or add a %s)'):format(
+        cwd,
+        config.get().project_file
+      )
+    )
     return
   end
 
@@ -302,9 +329,7 @@ function M.check()
     vim.health.ok(('preset: %s'):format(cfg.preset))
   end
   if #cfg.patterns > 0 then
-    vim.health.ok(
-      ('%d extraction patterns, filetypes: %s'):format(#cfg.patterns, table.concat(cfg.filetypes, ', '))
-    )
+    vim.health.ok(('%d extraction patterns, filetypes: %s'):format(#cfg.patterns, table.concat(cfg.filetypes, ', ')))
   else
     vim.health.error('patterns is empty')
   end
@@ -321,8 +346,9 @@ function M.check()
       vim.health.warn(('unknown options in the project file (ignored): %s'):format(table.concat(unknown, ', ')))
     end
   else
-    vim.health.ok(('translation directory: %s (no %s, using setup defaults)')
-      :format(project.catalogs[1].dir, cfg.project_file))
+    vim.health.ok(
+      ('translation directory: %s (no %s, using setup defaults)'):format(project.catalogs[1].dir, cfg.project_file)
+    )
   end
 
   if check_catalogs(project) == false then

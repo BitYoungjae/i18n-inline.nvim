@@ -215,8 +215,13 @@ function M.jump(opts)
     lang = jcfg.lang == 'source' and cfg.source_lang or cfg.preview_lang
   end
   if not lang or not catalog.langs[lang] then
-    notify(('no translation file for "%s" (available: %s)')
-      :format(tostring(lang), table.concat(resolve.sorted_langs(catalog), ', ')), vim.log.levels.WARN)
+    notify(
+      ('no translation file for "%s" (available: %s)'):format(
+        tostring(lang),
+        table.concat(resolve.sorted_langs(catalog), ', ')
+      ),
+      vim.log.levels.WARN
+    )
     return
   end
   jump_lang(catalog, lang, m.key, open, note)

@@ -836,8 +836,11 @@ function M.ensure_lang(catalog, lang)
   local fmt = formats.for_path(path, catalog.cfg)
   if not fmt then
     local ext = path:match('%.([%w]+)$') or '(none)'
-    local err = ('no parser for .%s files: %s (set "format" or use %s)')
-      :format(ext, path, table.concat(formats.names(), '/'))
+    local err = ('no parser for .%s files: %s (set "format" or use %s)'):format(
+      ext,
+      path,
+      table.concat(formats.names(), '/')
+    )
     file_cache[path] = { sig = sig, err = err }
     return nil, err
   end

@@ -158,10 +158,19 @@ return function(t, eq, ok_, make_project, plugin_dir)
     ok_(e2 and e2:match('max_len must be a number'), tostring(e2))
     local _, e3 = config.merge_project({ preview_lang = { 'ko' } })
     ok_(e3 and e3:match('preview_lang must be a string'), tostring(e3))
-    eq(config.unknown_keys({ preview_language = 'ko', dir = 'x', check = { ignored = {} }, ['$schema'] = 'x', ['//'] = 'note' }), {
-      'check.ignored',
-      'preview_language',
-    })
+    eq(
+      config.unknown_keys({
+        preview_language = 'ko',
+        dir = 'x',
+        check = { ignored = {} },
+        ['$schema'] = 'x',
+        ['//'] = 'note',
+      }),
+      {
+        'check.ignored',
+        'preview_language',
+      }
+    )
   end)
 
   -- ===== presets =====
@@ -379,9 +388,12 @@ return function(t, eq, ok_, make_project, plugin_dir)
     api.nvim_buf_set_name(buf, root .. '/src/probe.cljs')
     vim.fn.setqflist({}, ' ')
     check.check(buf)
-    ok_(vim.wait(5000, function()
-      return #vim.fn.getqflist() >= 1
-    end, 20), 'quickfix never filled')
+    ok_(
+      vim.wait(5000, function()
+        return #vim.fn.getqflist() >= 1
+      end, 20),
+      'quickfix never filled'
+    )
     local text = vim.fn.getqflist()[1].text
     ok_(not text:find('\n'), 'newline in quickfix text: ' .. text)
     ok_(text:find('line1 ⏎ line2', 1, true), text)
@@ -406,10 +418,13 @@ return function(t, eq, ok_, make_project, plugin_dir)
     vim.cmd('messages clear')
     check.check(buf)
     local msgs
-    ok_(vim.wait(5000, function()
-      msgs = vim.fn.execute('messages')
-      return msgs:find('not referenced', 1, true) ~= nil
-    end, 20), 'no unused-key message')
+    ok_(
+      vim.wait(5000, function()
+        msgs = vim.fn.execute('messages')
+        return msgs:find('not referenced', 1, true) ~= nil
+      end, 20),
+      'no unused-key message'
+    )
     ok_(msgs:find('11 keys in "ko"', 1, true), msgs)
     ok_(msgs:find('k12', 1, true) and not msgs:find('…', 1, true), msgs) -- was cut at ten
     vim.cmd('cclose')
@@ -635,8 +650,10 @@ return function(t, eq, ok_, make_project, plugin_dir)
 
   t('regression: a project file edited outside Neovim is re-read', function()
     reset_all()
-    local root =
-      make_project({ dir = 'tr', patterns = CLJ, preview_lang = 'ko' }, { ko = { a = 'KO' }, en = { a = 'EN' } })
+    local root = make_project(
+      { dir = 'tr', patterns = CLJ, preview_lang = 'ko' },
+      { ko = { a = 'KO' }, en = { a = 'EN' } }
+    )
     local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a])' }, 'clojure')
     preview.refresh(buf)
     eq(preview.match_at(buf, 0).value, 'KO')
