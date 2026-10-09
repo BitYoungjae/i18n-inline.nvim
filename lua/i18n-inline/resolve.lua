@@ -89,13 +89,14 @@ local function find_upward(base, rel, want_dir)
 end
 
 -- Discover languages from translation files in dir (ko.json / ko.po -> "ko").
--- `only` (the `languages` option) restricts the result when given.
+-- `only` (the `languages` option) restricts the result when given. Returns
+-- the languages and the directory scanned.
 local function discover_langs(dir, only)
   local allowed = only and util.set(only)
   local langs = {}
   local fs = uv.fs_scandir(dir)
   if not fs then
-    return langs
+    return langs, dir
   end
   while true do
     local name, ftype = uv.fs_scandir_next(fs)
@@ -110,7 +111,7 @@ local function discover_langs(dir, only)
       end
     end
   end
-  return langs
+  return langs, dir
 end
 
 -- Literal template text -> Lua pattern source ('%%' in a template is a
@@ -133,7 +134,7 @@ local function discover_template_langs(dir, template, only)
   end
   local langs = {}
   if not at then
-    return langs
+    return langs, nil
   end
   local parent = dir
   for i = 1, at - 1 do
@@ -157,7 +158,7 @@ local function discover_template_langs(dir, template, only)
       end
     end
   end
-  return langs
+  return langs, parent
 end
 
 -- Read and cache the per-project config file. Returns table | nil, err.
@@ -270,19 +271,23 @@ end
 
 -- (Re)build catalog.langs: from file_template + languages, from the files
 -- file_template matches, or by scanning the directory (restricted to
--- `languages` when given).
+-- `languages` when given). A scanned directory is remembered with its
+-- signature, so a language file added later (git pull, a generator) is
+-- found once the directory changes (see ensure_lang).
 function M.rediscover(catalog)
   local cfg = catalog.cfg
+  local scanned
   if cfg.file_template and cfg.languages then
     catalog.langs = {}
     for _, lang in ipairs(cfg.languages) do
       catalog.langs[lang] = normalize(catalog.dir .. '/' .. cfg.file_template:format(lang))
     end
   elseif cfg.file_template then
-    catalog.langs = discover_template_langs(catalog.dir, cfg.file_template)
+    catalog.langs, scanned = discover_template_langs(catalog.dir, cfg.file_template)
   else
-    catalog.langs = discover_langs(catalog.dir, cfg.languages)
+    catalog.langs, scanned = discover_langs(catalog.dir, cfg.languages)
   end
+  catalog.scanned = scanned and { dir = scanned, sig = file_sig(scanned) }
 end
 
 local function new_catalog(project, entry, dir, wildcard)
@@ -429,7 +434,8 @@ function M.load_catalogs(project)
   project.cands = {}
 end
 
--- Resolve the project for a base directory. Returns project | nil.
+-- Resolve the project for a base directory. Returns project | nil, plus
+-- the project file found, if any, when there is no project.
 -- A project table: { root, cfg, catalogs = { catalog… }, config_file?,
 -- uses, unmatched, empty }; a catalog: { dir, rel, label, home, cfg,
 -- langs = { lang = path }, wildcard }.
@@ -443,7 +449,7 @@ function M.project_from(base_path)
     local decoded, err = read_project_file(cfg_file)
     if not decoded then
       warn_once(cfg_file, err)
-      return nil
+      return nil, cfg_file
     end
     file_cfg = decoded
   end
@@ -451,7 +457,7 @@ function M.project_from(base_path)
   local cfg, err = config.merge_project(file_cfg or {})
   if not cfg then
     warn_once(cfg_file or '', ('%s: %s'):format(cfg_file or 'setup()', err))
-    return nil
+    return nil, cfg_file
   end
   if cfg_file then
     local unknown = config.unknown_keys(file_cfg)
@@ -465,7 +471,7 @@ function M.project_from(base_path)
   -- ancestor that holds the first catalog's directory.
   local entries = catalog_entries(cfg)
   if #entries == 0 then
-    return nil
+    return nil, cfg_file
   end
   if not root then
     local first = literal_prefix(entries[1].dir)
@@ -476,12 +482,12 @@ function M.project_from(base_path)
       _, root = find_upward(base_path, first, true)
     end
     if not root then
-      return nil
+      return nil, cfg_file
     end
   end
 
   local project = projects[root]
-  if project then
+  if project and project.file_cfg == file_cfg then
     return project
   end
 
@@ -489,10 +495,13 @@ function M.project_from(base_path)
     root = root,
     cfg = cfg,
     config_file = cfg_file,
+    -- the decoded project file: read_project_file returns this same table
+    -- until the file changes, so identity tells a stale project
+    file_cfg = file_cfg,
   }
   M.load_catalogs(project)
   if #project.catalogs == 0 then
-    return nil
+    return nil, cfg_file
   end
   projects[root] = project
   return project
@@ -709,10 +718,17 @@ function M.preview_error(view)
   return first or 'no catalogs'
 end
 
+-- Has the project file changed since `project` was built from it? Saving
+-- it in Neovim resets everything; this catches edits from elsewhere (a
+-- git checkout, another editor). One stat while it is unchanged.
+local function stale(project)
+  return project.config_file ~= nil and read_project_file(project.config_file) ~= project.file_cfg
+end
+
 -- Project for a buffer. Unnamed buffers start the search at cwd.
 function M.project_for(buf)
   local cached = buf_project[buf]
-  if cached ~= nil then
+  if cached ~= nil and not (cached and stale(cached)) then
     return cached or nil
   end
   local name = vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_get_name(buf) or ''
@@ -722,9 +738,16 @@ function M.project_for(buf)
   else
     base = vim.fs.dirname(normalize(name))
   end
-  local project = M.project_from(base)
-  -- Cache both hits and misses; invalidated on unload or config save.
-  buf_project[buf] = project or false
+  local project, cfg_file = M.project_from(base)
+  -- Cache hits, and misses with no project file; invalidated on unload,
+  -- config save, or (hits) when the project file changes outside Neovim.
+  -- A project file that yields no project (broken JSON, no catalogs yet)
+  -- is retried on the next refresh: fixing it outside Neovim must work.
+  if project then
+    buf_project[buf] = project
+  elseif not cfg_file then
+    buf_project[buf] = false
+  end
   return project
 end
 
@@ -789,6 +812,11 @@ end
 -- flattened at decode time). Returns keys | nil, err.
 function M.ensure_lang(catalog, lang)
   local path = catalog.langs[lang]
+  local scanned = catalog.scanned
+  if not path and scanned and file_sig(scanned.dir) ~= scanned.sig then
+    M.rediscover(catalog)
+    path = catalog.langs[lang]
+  end
   if not path then
     return nil, ('no translation file for language "%s" (dir: %s)'):format(lang, catalog.dir)
   end

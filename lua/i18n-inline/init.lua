@@ -38,6 +38,10 @@ end
 function M.setup(opts)
   require('i18n-inline.config').setup(opts)
   did_setup = true
+  -- projects resolved so far were built from the previous options
+  if package.loaded['i18n-inline.resolve'] then
+    require('i18n-inline.resolve').reset()
+  end
 
   -- Rendering modules load on the first event that needs them, so setup()
   -- stays cheap enough to run at startup (no lazy-loading needed).

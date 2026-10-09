@@ -631,6 +631,50 @@ return function(t, eq, ok_, make_project, plugin_dir)
     eq({ find(lines, 'Home.after', { separator = '.' }) }, { 5, 5, 7 })
   end)
 
+  -- ===== resolve freshness =====
+
+  t('regression: a project file edited outside Neovim is re-read', function()
+    reset_all()
+    local root =
+      make_project({ dir = 'tr', patterns = CLJ, preview_lang = 'ko' }, { ko = { a = 'KO' }, en = { a = 'EN' } })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a])' }, 'clojure')
+    preview.refresh(buf)
+    eq(preview.match_at(buf, 0).value, 'KO')
+    uv.sleep(20) -- a distinct mtime
+    write(root .. '/.i18n-inline.json', vim.json.encode({ dir = 'tr', patterns = CLJ, preview_lang = 'en' }))
+    preview.refresh(buf)
+    eq(preview.match_at(buf, 0).value, 'EN')
+    -- broken, then fixed again: the buffer must not stay without a project
+    local orig = vim.notify
+    vim.notify = function() end
+    uv.sleep(20)
+    write(root .. '/.i18n-inline.json', '{ broken')
+    preview.refresh(buf)
+    vim.notify = orig
+    eq(preview.match_at(buf, 0), nil)
+    uv.sleep(20)
+    write(root .. '/.i18n-inline.json', vim.json.encode({ dir = 'tr', patterns = CLJ, preview_lang = 'ko' }))
+    preview.refresh(buf)
+    eq(preview.match_at(buf, 0).value, 'KO')
+    api.nvim_win_close(win, true)
+    wipe(buf)
+  end)
+
+  t('regression: setup() again drops projects built from the old options', function()
+    reset_all()
+    local root = make_project(nil, { ko = { a = 'KO' }, en = { a = 'EN' } })
+    require('i18n-inline').setup({ dir = 'tr', patterns = CLJ })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a])' }, 'clojure')
+    preview.refresh(buf)
+    eq(preview.match_at(buf, 0).value, 'KO')
+    require('i18n-inline').setup({ dir = 'tr', patterns = CLJ, preview_lang = 'en' })
+    preview.refresh(buf)
+    eq(preview.match_at(buf, 0).value, 'EN')
+    pcall(api.nvim_del_augroup_by_name, 'i18n-inline')
+    api.nvim_win_close(win, true)
+    wipe(buf)
+  end)
+
   t('regression: symlinked translation and source files are found', function()
     reset_all()
     local root = make_project({ dir = 'tr', patterns = CLJ }, { en = { a = 'EN' } })
@@ -643,5 +687,22 @@ return function(t, eq, ok_, make_project, plugin_dir)
     ok_(project.catalogs[1].langs.ko ~= nil, 'symlinked ko.json not discovered')
     local files = require('i18n-inline.util').walk_files(root, { extensions = { 'cljs' } })
     eq(#files, 2)
+  end)
+
+  t('regression: a language file added outside Neovim is picked up', function()
+    reset_all()
+    local root = make_project({ dir = 'tr', patterns = CLJ, preview_lang = 'ko' }, { en = { a = 'EN' } })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a])' }, 'clojure')
+    local orig = vim.notify
+    vim.notify = function() end
+    preview.refresh(buf) -- no ko.json yet
+    vim.notify = orig
+    eq(preview.match_at(buf, 0), nil)
+    uv.sleep(20)
+    write(root .. '/tr/ko.json', '{"a": "KO"}')
+    preview.refresh(buf)
+    eq(preview.match_at(buf, 0).value, 'KO')
+    api.nvim_win_close(win, true)
+    wipe(buf)
   end)
 end
