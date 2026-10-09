@@ -61,12 +61,13 @@ local defaults = {
   -- Filetypes to scan.
   filetypes = { 'clojure' },
   -- Extraction patterns (Lua patterns). Contract: 1 capture = key;
-  -- 2 captures = (receiver, subkey) — see scan.lua.
+  -- 2 captures = (receiver, subkey) — see scan.lua. The key class is
+  -- Clojure's keyword characters (`:valid?`, `:a->b`).
   patterns = {
-    '%(tr%s*%[%s*:([%w%.%-_/]+)',
-    '%(tr%-release%s*%[%s*:([%w%.%-_/]+)',
-    '%(i18n/tr%s*%[%s*:([%w%.%-_/]+)',
-    '%(i18n/tr%-release%s*%[%s*:([%w%.%-_/]+)',
+    '%(tr%s*%[%s*:([%w%.%-_/%?!%*%+<>=]+)',
+    '%(tr%-release%s*%[%s*:([%w%.%-_/%?!%*%+<>=]+)',
+    '%(i18n/tr%s*%[%s*:([%w%.%-_/%?!%*%+<>=]+)',
+    '%(i18n/tr%-release%s*%[%s*:([%w%.%-_/%?!%*%+<>=]+)',
   },
   -- Namespace binding patterns (R1.3), run before the call patterns:
   -- 2 captures = (variable, namespace literal), 1 capture = (variable, root).

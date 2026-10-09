@@ -589,6 +589,27 @@ return function(t, eq, ok_, make_project, plugin_dir)
     ok_(notified[1]:find('unfinished capture', 1, true), notified[1])
   end)
 
+  t('regression: code escapes in fallbacks decode to UTF-8', function()
+    local ms = scan.scan([[(tr [:a "café \u{1F600}😀 \x41"])]], { patterns = CLJ })
+    eq(ms[1].fb, 'café 😀😀 A')
+    -- malformed: kept as written
+    eq(scan.scan([[(tr [:a "x\u12"])]], { patterns = CLJ })[1].fb, 'xu12')
+  end)
+
+  t('regression: a literal that is only part of an expression is no fallback', function()
+    local pats = { "t%('([%w]+)'" }
+    local ms = scan.scan("t('k', 'a' + b); t('j', 'ok'); t('m', 'x' )", { patterns = pats })
+    eq({ ms[1].fb, ms[2].fb, ms[3].fb }, { nil, 'ok', 'x' })
+    -- Clojure: 'a is a quoted symbol, not a string
+    eq(scan.scan("(tr [:k 'a]) (foo 'b)", { patterns = CLJ })[1].fb, nil)
+  end)
+
+  t('regression: default Clojure patterns take the whole keyword', function()
+    config.reset()
+    local ms = scan.scan('(tr [:valid? "ok"]) (tr [:a->b!])', config.get())
+    eq({ ms[1].key, ms[2].key }, { 'valid?', 'a->b!' })
+  end)
+
   -- ===== json jump =====
 
   t('regression: json find_line follows the structure to the right key', function()

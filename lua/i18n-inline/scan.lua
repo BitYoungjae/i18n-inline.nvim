@@ -45,6 +45,51 @@ local util = require('i18n-inline.util')
 
 local M = {}
 
+-- Code point -> UTF-8.
+local function utf8_char(cp)
+  if cp < 0x80 then
+    return string.char(cp)
+  elseif cp < 0x800 then
+    return string.char(0xC0 + math.floor(cp / 0x40), 0x80 + cp % 0x40)
+  elseif cp < 0x10000 then
+    return string.char(0xE0 + math.floor(cp / 0x1000), 0x80 + math.floor(cp / 0x40) % 0x40, 0x80 + cp % 0x40)
+  end
+  return string.char(
+    0xF0 + math.floor(cp / 0x40000),
+    0x80 + math.floor(cp / 0x1000) % 0x40,
+    0x80 + math.floor(cp / 0x40) % 0x40,
+    0x80 + cp % 0x40
+  )
+end
+
+-- Escapes that spell a character by its code: \xHH, \uXXXX (a UTF-16
+-- surrogate pair spells one), \u{X…}. `i` is the backslash. Returns the
+-- UTF-8 text and the offset just past the escape, or nil when malformed.
+local function code_escape(text, i)
+  local kind = text:sub(i + 1, i + 1)
+  local hex = text:match(kind == 'x' and '^%x%x' or '^%x%x%x%x', i + 2)
+  local next_i = hex and i + 2 + #hex
+  if kind == 'u' and not hex then
+    hex = text:match('^{(%x+)}', i + 2)
+    next_i = hex and i + 4 + #hex
+  end
+  local cp = hex and #hex <= 6 and tonumber(hex, 16)
+  if not cp or cp > 0x10FFFF then
+    return nil
+  end
+  if cp >= 0xD800 and cp <= 0xDBFF then
+    local low = text:match('^\\u(%x%x%x%x)', next_i)
+    local lo = low and tonumber(low, 16)
+    if lo and lo >= 0xDC00 and lo <= 0xDFFF then
+      cp = 0x10000 + (cp - 0xD800) * 0x400 + (lo - 0xDC00)
+      next_i = next_i + 6
+    end
+  end
+  return utf8_char(cp), next_i
+end
+
+local ESCAPES = { n = '\n', t = '\t', r = '\r', b = '\b', f = '\f', v = '\v', ['0'] = '\0' }
+
 -- Parse the string literal starting at `start` (a quote character).
 -- Returns unescaped content, opening quote offset, closing quote offset,
 -- or nil when there is no valid static literal here.
@@ -60,17 +105,20 @@ local function parse_string_literal(text, start)
     local c = text:sub(i, i)
     if c == '\\' then
       local nxt = text:sub(i + 1, i + 1)
+      local char, next_i
+      if nxt == 'u' or nxt == 'x' then
+        char, next_i = code_escape(text, i)
+      end
       if nxt == '' then
         return nil
-      elseif nxt == 'n' then
-        out[#out + 1] = '\n'
-      elseif nxt == 't' then
-        out[#out + 1] = '\t'
+      elseif char then
+        out[#out + 1] = char
+        i = next_i
       else
         -- \\, \", \' and anything else keep the escaped character
-        out[#out + 1] = nxt
+        out[#out + 1] = ESCAPES[nxt] or nxt
+        i = i + 2
       end
-      i = i + 2
     elseif quote == '`' and c == '$' and text:sub(i + 1, i + 1) == '{' then
       return nil -- template literal with interpolation: not static
     elseif c == quote then
@@ -134,6 +182,22 @@ local function skip_ws(text, j)
   return j
 end
 
+-- Set m's fallback from the literal at `j` when it is a whole argument:
+-- what follows ends it (`,` `)` `]` `}`), or the next call starts. In
+-- `t('k', 'a' + b)` the literal is only part of an expression.
+local function take_literal(text, m, j, bound)
+  local fb, str_s, str_e = parse_string_literal(text, j)
+  if not fb then
+    return false
+  end
+  local k = skip_ws(text, str_e + 1)
+  if k <= bound and k <= #text and not text:sub(k, k):find('[,%)%]}]') then
+    return false
+  end
+  m.fb, m.str_s, m.str_e = fb, str_s, str_e
+  return true
+end
+
 -- 'literal' fallback within (m.call_e, bound]: skip whitespace and one
 -- optional comma (t('k', 'fb')) before the literal.
 local function fallback_literal(text, m, bound)
@@ -142,12 +206,7 @@ local function fallback_literal(text, m, bound)
     j = skip_ws(text, j + 1)
   end
   if j <= bound and j <= #text then
-    local fb, str_s, str_e = parse_string_literal(text, j)
-    if fb then
-      m.fb = fb
-      m.str_s = str_s
-      m.str_e = str_e
-    end
+    take_literal(text, m, j, bound)
   end
 end
 
@@ -161,12 +220,7 @@ local function fallback_prop(text, m, bound, props)
       if not s or s > bound then
         break
       end
-      local j = skip_ws(text, e + 1)
-      local fb, str_s, str_e = parse_string_literal(text, j)
-      if fb then
-        m.fb = fb
-        m.str_s = str_s
-        m.str_e = str_e
+      if take_literal(text, m, skip_ws(text, e + 1), bound) then
         return
       end
       init = e + 1

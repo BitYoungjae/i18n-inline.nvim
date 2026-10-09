@@ -255,9 +255,10 @@ not regular expressions. The number of captures decides what they mean:
   `require('x')` and `console.error('…')` out.
 
 After a match, the plugin looks for the default: whitespace, an optional
-comma, then a `"…"`, `'…'` or backtick string. Template strings with
-`${…}` are skipped, and the search never runs into the next call. Calls
-split over several lines work.
+comma, then a `"…"`, `'…'` or backtick string that is the whole argument
+(`'a' + b` is not a default). Template strings with `${…}` are skipped,
+and the search never runs into the next call. Calls split over several
+lines work.
 
 A pattern Lua cannot parse is reported once and matches nothing.
 
