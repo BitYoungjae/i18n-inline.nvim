@@ -556,6 +556,26 @@ return function(t, eq, ok_, make_project, plugin_dir)
     wipe(buf)
   end)
 
+  -- ===== jump =====
+
+  t('regression: a file :I18nJump cannot open reports the bare Vim error', function()
+    reset_all()
+    local root = make_project({ dir = 'tr', patterns = CLJ }, { ko = { a = 'A' } })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a "A"])' }, 'clojure') -- modified
+    api.nvim_win_set_cursor(win, { 1, 6 })
+    local hidden, msgs, orig = vim.o.hidden, {}, vim.notify
+    vim.o.hidden = false -- leaving a modified buffer is E37
+    vim.notify = function(msg)
+      msgs[#msgs + 1] = msg
+    end
+    local ok, err = pcall(jump.jump)
+    vim.notify, vim.o.hidden = orig, hidden
+    api.nvim_win_close(win, true)
+    wipe(buf)
+    ok_(ok, tostring(err))
+    eq(msgs, { '[i18n-inline] E37: No write since last change (add ! to override)' })
+  end)
+
   -- ===== po =====
 
   t('regression: po fuzzy flag survives #| lines; plural forms stay apart', function()

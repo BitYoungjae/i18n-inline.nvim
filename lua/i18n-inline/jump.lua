@@ -88,9 +88,10 @@ end
 -- Returns false when the file could not be opened (E37 and friends are
 -- reported instead of raised).
 local function open_at(open, path, lnum, col, len)
-  local ok, err = pcall(vim.cmd, ('%s %s'):format(OPEN_CMD[open] or 'edit', vim.fn.fnameescape(path)))
+  local ok, err = pcall(api.nvim_command, ('%s %s'):format(OPEN_CMD[open] or 'edit', vim.fn.fnameescape(path)))
   if not ok then
-    notify(tostring(err):gsub('^Vim%(%w+%):', ''), vim.log.levels.ERROR)
+    -- keep "E37: …": the error arrives as "command line: Vim(edit):E37: …"
+    notify(tostring(err):gsub('^.-Vim%(%w+%):', ''), vim.log.levels.ERROR)
     return false
   end
   lnum = math.min(lnum, api.nvim_buf_line_count(0))
