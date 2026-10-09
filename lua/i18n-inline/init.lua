@@ -28,10 +28,13 @@ local M = {}
 
 ---@param opts table|nil setup options (see config.lua defaults)
 function M.setup(opts)
-  local config = require('i18n-inline.config')
-  config.setup(opts)
+  require('i18n-inline.config').setup(opts)
 
-  local preview = require('i18n-inline.preview')
+  -- Rendering modules load on the first event that needs them, so setup()
+  -- stays cheap enough to run at startup (no lazy-loading needed).
+  local function preview()
+    return require('i18n-inline.preview')
+  end
 
   local group = api.nvim_create_augroup('i18n-inline', { clear = true })
 
@@ -39,7 +42,7 @@ function M.setup(opts)
   api.nvim_create_autocmd({ 'BufReadPost', 'BufWritePost', 'FileType' }, {
     group = group,
     callback = function(ev)
-      preview.schedule(ev.buf)
+      preview().schedule(ev.buf)
     end,
   })
 
@@ -47,7 +50,7 @@ function M.setup(opts)
   api.nvim_create_autocmd({ 'InsertLeave', 'TextChanged' }, {
     group = group,
     callback = function(ev)
-      preview.schedule(ev.buf)
+      preview().schedule(ev.buf)
     end,
   })
 
@@ -55,7 +58,7 @@ function M.setup(opts)
   api.nvim_create_autocmd('BufUnload', {
     group = group,
     callback = function(ev)
-      preview.unload(tonumber(ev.match) or ev.buf)
+      preview().unload(tonumber(ev.match) or ev.buf)
     end,
   })
 
@@ -64,7 +67,7 @@ function M.setup(opts)
     group = group,
     callback = function(ev)
       require('i18n-inline.resolve').forget(ev.buf)
-      preview.schedule(ev.buf)
+      preview().schedule(ev.buf)
     end,
   })
 
@@ -74,14 +77,15 @@ function M.setup(opts)
   api.nvim_create_autocmd('BufWritePost', {
     group = group,
     callback = function(ev)
-      preview.on_file_saved(api.nvim_buf_get_name(ev.buf))
+      preview().on_file_saved(api.nvim_buf_get_name(ev.buf))
     end,
   })
 
-  -- Handle buffers opened before setup() ran (lazy loading)
+  -- Handle buffers opened before setup() ran (lazy loading). A buffer with
+  -- no filetype yet can't be previewed; FileType schedules it once it has one.
   for _, buf in ipairs(api.nvim_list_bufs()) do
-    if api.nvim_buf_is_loaded(buf) then
-      preview.schedule(buf)
+    if api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype ~= '' then
+      preview().schedule(buf)
     end
   end
 
