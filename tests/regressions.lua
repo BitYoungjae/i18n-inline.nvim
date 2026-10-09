@@ -469,4 +469,75 @@ return function(t, eq, ok_, make_project, plugin_dir)
     wipe(buf)
     ok_(vim.fn.hlexists('I18nInlineMismatch') == 1, 'highlight group not defined')
   end)
+
+  -- ===== extmark bookkeeping =====
+
+  local function marks(buf)
+    return api.nvim_buf_get_extmarks(buf, api.nvim_create_namespace('i18n_inline'), 0, -1, { details = true })
+  end
+
+  t('regression: :edit! re-reading a buffer keeps one set of marks', function()
+    reset_all()
+    require('i18n-inline').setup({ debounce_ms = 1 })
+    local root = make_project({ dir = 'tr', patterns = CLJ }, { ko = { a = 'A', b = 'B' } })
+    write(root .. '/x.cljs', '(tr [:a "A"])\n(tr [:b "other"])\n')
+    local ok, err = pcall(function()
+      vim.cmd('silent edit ' .. vim.fn.fnameescape(root .. '/x.cljs'))
+      local buf = api.nvim_get_current_buf()
+      preview.refresh(buf)
+      local before = #marks(buf)
+      eq(before, 3) -- two values + one mismatch underline
+      for _ = 1, 2 do
+        -- BufUnload fires and the state goes, but the buffer's marks stay
+        vim.cmd('silent edit!')
+        eq(#marks(buf), 0, 'marks left behind by the unloaded state')
+        preview.refresh(buf)
+        eq(#marks(buf), before)
+      end
+    end)
+    pcall(api.nvim_del_augroup_by_name, 'i18n-inline')
+    vim.cmd('silent! %bwipeout!')
+    if not ok then
+      error(err, 0)
+    end
+  end)
+
+  t('regression: a fresh state clears marks it does not track', function()
+    reset_all()
+    local root = make_project({ dir = 'tr', patterns = CLJ }, { ko = { a = 'A' } })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a "A"])' }, 'clojure')
+    preview.refresh(buf)
+    preview._reset() -- state lost without its marks (a module reload, …)
+    preview.refresh(buf)
+    eq(#marks(buf), 1)
+    api.nvim_win_close(win, true)
+    wipe(buf)
+  end)
+
+  t('regression: a match ending on the newline renders at the line end', function()
+    reset_all()
+    local root = make_project({ dir = 'tr', patterns = { '%(tr%s*%[%s*:([%w%-]+)%s' } }, { ko = { a = 'A' } })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a', '])' }, 'clojure')
+    preview.refresh(buf) -- raised "Invalid 'col': out of range"
+    local ms = marks(buf)
+    eq(#ms, 1)
+    eq({ ms[1][2], ms[1][3] }, { 0, 7 })
+    api.nvim_win_close(win, true)
+    wipe(buf)
+  end)
+
+  t('regression: turning underline_mismatch off removes drawn underlines', function()
+    reset_all()
+    local root = make_project({ dir = 'tr', patterns = CLJ }, { ko = { a = 'A' } })
+    local buf, win = open_buf(root .. '/x.cljs', { '(tr [:a "other"])' }, 'clojure')
+    preview.refresh(buf)
+    eq(#marks(buf), 2)
+    preview.state(buf).project.cfg.underline_mismatch = false
+    preview.refresh(buf)
+    local ms = marks(buf)
+    eq(#ms, 1)
+    ok_(ms[1][4].virt_text ~= nil, 'the value mark should stay')
+    api.nvim_win_close(win, true)
+    wipe(buf)
+  end)
 end

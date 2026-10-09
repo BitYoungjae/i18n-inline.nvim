@@ -67,7 +67,7 @@ function M.setup(opts)
   api.nvim_create_autocmd('BufUnload', {
     group = group,
     callback = function(ev)
-      preview().unload(tonumber(ev.match) or ev.buf)
+      preview().unload(ev.buf)
     end,
   })
 

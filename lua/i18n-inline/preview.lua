@@ -196,10 +196,16 @@ function M.clear(buf)
   end
 end
 
+-- BufUnload. Also fires when `:edit`/`:edit!` re-reads the buffer in
+-- place, and extmarks survive that: clear them with the state that tracks
+-- them, or the next render adds a second set beside the orphaned one.
 function M.unload(buf)
   local st = state[buf]
-  if st and st.timer then
-    st.timer:close()
+  if st then
+    if st.timer then
+      st.timer:close()
+    end
+    clear_marks(buf, st)
   end
   state[buf] = nil
   resolve.forget(buf)
@@ -241,6 +247,12 @@ local function render(buf, st, cfg)
     return
   end
 
+  -- Without ids to reuse, nothing in the namespace is tracked: start from
+  -- an empty one so marks a lost state left behind cannot pile up.
+  if not st.virt_ids then
+    clear_marks(buf, st)
+  end
+
   local shown = {}
   for _, m in ipairs(st.matches) do
     if eff == 'always' or m.status == 'mismatch' or m.status == 'missing' then
@@ -265,30 +277,26 @@ local function render(buf, st, cfg)
     if st.virt_ids and st.virt_ids[i] then
       opts.id = st.virt_ids[i]
     end
-    local row, col
-    if cfg.position == 'eol' then
-      row, col = m.row_end, 0
-    else
-      row, col = m.row_end, m.col_end + 1
-    end
-    virt_ids[i] = api.nvim_buf_set_extmark(buf, ns(), row, col, opts)
+    local col = cfg.position == 'eol' and 0 or m.mark_col
+    virt_ids[i] = api.nvim_buf_set_extmark(buf, ns(), m.row_end, col, opts)
   end
   for i = #shown + 1, #(st.virt_ids or {}) do
     api.nvim_buf_del_extmark(buf, ns(), st.virt_ids[i])
   end
   st.virt_ids = virt_ids
 
-  -- Underline mismatched fallback strings
+  -- Underline mismatched fallback strings (none when the option is off:
+  -- the loop below then deletes the ones a previous render drew)
+  local hl_ids = {}
+  local n = 0
   if cfg.underline_mismatch then
-    local hl_ids = {}
-    local n = 0
     for _, m in ipairs(shown) do
       if m.status == 'mismatch' and m.str_row_s then
         n = n + 1
         local opts = {
           hl_group = cfg.hl.underline,
           end_row = m.row_end,
-          end_col = m.col_end + 1, -- include the closing quote
+          end_col = m.mark_col, -- include the closing quote
         }
         if cfg.extmark_priority then
           opts.priority = cfg.extmark_priority
@@ -299,11 +307,11 @@ local function render(buf, st, cfg)
         hl_ids[n] = api.nvim_buf_set_extmark(buf, ns(), m.str_row_s, m.str_col_s, opts)
       end
     end
-    for i = n + 1, #(st.hl_ids or {}) do
-      api.nvim_buf_del_extmark(buf, ns(), st.hl_ids[i])
-    end
-    st.hl_ids = hl_ids
   end
+  for i = n + 1, #(st.hl_ids or {}) do
+    api.nvim_buf_del_extmark(buf, ns(), st.hl_ids[i])
+  end
+  st.hl_ids = hl_ids
 end
 
 -- Buffer-local action keymaps (R6.1/R6.7). Applied once per distinct keymap
@@ -381,6 +389,9 @@ function M.refresh(buf)
   for _, m in ipairs(matches) do
     m.row_start, m.col_start = util.byte_to_pos(offsets, m.call_s)
     m.row_end, m.col_end = util.byte_to_pos(offsets, m.str_e or m.call_e)
+    -- Just past the match, where the inline mark goes. A pattern can end
+    -- on the newline itself (a trailing `%s`): stay on that line's end.
+    m.mark_col = math.min(m.col_end + 1, #lines[m.row_end + 1])
     if m.str_s then
       m.str_row_s, m.str_col_s = util.byte_to_pos(offsets, m.str_s)
     end
