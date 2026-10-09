@@ -168,31 +168,30 @@ end
 -- entries (empty msgstr) — those read as missing keys downstream.
 local function decode_po(raw, _cfg)
   local out = {}
-  local msgid, msgstr, mode = nil, nil, nil -- mode: 'id' | 'plural' | 'str'
-  local in_entry, skip_current, skip_next = false, false, false
+  -- The entry being read: { id, str, skip }, and where continuation lines
+  -- go ('id' | 'str', or nil for parts that are not kept: msgctxt,
+  -- msgid_plural, msgstr[n > 0]).
+  local entry, mode = nil, nil
+  -- A fuzzy flag or msgctxt seen before the next msgid: marks that entry.
+  -- Comments come in any number before it (`#,` flags, then `#|` previous
+  -- msgids, as msgmerge writes them), so only a msgid consumes it.
+  local skip_next = false
 
-  -- Records the finished entry (if valid and not skipped) and resets state.
-  -- `skip_next` carries a fuzzy/msgctxt marker set BEFORE the entry started
-  -- (comment lines precede msgid; msgctxt precedes msgid) into the entry
-  -- that is about to begin.
   local function flush()
-    if in_entry and not skip_current and msgid and msgstr and msgid ~= '' and msgstr ~= '' then
-      out[msgid] = msgstr
+    if entry and not entry.skip and entry.id ~= '' and entry.str and entry.str ~= '' then
+      out[entry.id] = entry.str
     end
-    msgid, msgstr, mode = nil, nil, nil
-    in_entry = false
-    skip_current = skip_next
-    skip_next = false
+    entry, mode = nil, nil
   end
 
   for line in raw:gmatch('[^\r\n]+') do
     if line:match('^%s*#') then
-      -- Comment lines (#, #., #~ …) end the previous entry. Obsolete lines
-      -- carry `#~ msgid`/`#~ msgstr` which never match the patterns below,
-      -- so they contribute nothing; fuzzy marks the entry that follows.
       flush()
-      if line:match('fuzzy') then
-        skip_next, in_entry = true, true
+      -- flags live on `#,` lines only: "fuzzy" in a translator comment
+      -- is just a word
+      local flags = line:match('^%s*#,(.*)$')
+      if flags and flags:find('%f[%w-]fuzzy%f[^%w-]') then
+        skip_next = true
       end
     else
       local body = line:match('^%s*msgid%s+"(.*)"%s*$')
@@ -203,25 +202,29 @@ local function decode_po(raw, _cfg)
       local cont = line:match('^%s*"(.*)"%s*$') -- continuation: bare quoted line
       if ctxt then
         flush()
-        skip_next, in_entry = true, true
+        skip_next = true
       elseif body then
         flush() -- a msgid always starts a new entry
-        in_entry = true
-        msgid, mode = po_unescape(body), 'id'
+        entry, mode = { id = po_unescape(body), skip = skip_next }, 'id'
+        skip_next = false
+      elseif not entry then -- msgstr or continuation outside an entry
+        mode = nil
       elseif plural then
-        mode = 'plural'
+        mode = nil
       elseif str0 then
-        msgstr, mode = po_unescape(str0), 'str'
+        entry.str, mode = po_unescape(str0), 'str'
       elseif strn then
         if idx == '0' then -- plural "one" form; other forms ignored
-          msgstr, mode = po_unescape(strn), 'str'
+          entry.str, mode = po_unescape(strn), 'str'
+        else
+          mode = nil
         end
       elseif cont then
         local c = po_unescape(cont)
-        if mode == 'id' and msgid then
-          msgid = msgid .. c
-        elseif mode == 'str' and msgstr then
-          msgstr = msgstr .. c
+        if mode == 'id' then
+          entry.id = entry.id .. c
+        elseif mode == 'str' then
+          entry.str = entry.str .. c
         end
       end
     end

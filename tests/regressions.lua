@@ -540,4 +540,30 @@ return function(t, eq, ok_, make_project, plugin_dir)
     api.nvim_win_close(win, true)
     wipe(buf)
   end)
+
+  -- ===== po =====
+
+  t('regression: po fuzzy flag survives #| lines; plural forms stay apart', function()
+    local po = table.concat({
+      '#: app.py:1',
+      '#, fuzzy, python-format',
+      '#| msgid "Old"',
+      'msgid "New"',
+      'msgstr "stale"',
+      '',
+      'msgid "one"',
+      'msgid_plural "many"',
+      'msgstr[0] "하나"',
+      'msgstr[1] ""',
+      '"여럿"',
+      '',
+      '# a translator note on fuzzy matching',
+      'msgid "Logic"',
+      'msgstr "로직"',
+    }, '\n')
+    local out = formats.registry.po.decode(po, {})
+    eq(out['New'], nil)
+    eq(out['one'], '하나')
+    eq(out['Logic'], '로직')
+  end)
 end
