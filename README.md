@@ -219,6 +219,7 @@ no preset covers are in [docs/configuration.md](docs/configuration.md).
 
 ```sh
 nvim --headless -u NORC +'luafile tests/run.lua'
+stylua --check .
 ```
 
 Set `I18N_SMOKE_REPO=/path/to/repo` to also run a smoke test against a real

@@ -20,3 +20,14 @@ jobs:
           neovim: true
           version: ${{ matrix.version }}
       - run: nvim --headless -u NORC +'luafile tests/run.lua'
+
+  format:
+    name: stylua
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: JohnnyMorganz/stylua-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: 2.5.2
+          args: --check .

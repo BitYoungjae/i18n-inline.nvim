@@ -14,5 +14,5 @@
 
 ## Checklist
 
-- [ ] Code style compliance
+- [ ] `stylua --check .` passes (CI checks it)
 - [ ] README / docs updated (`README.md`, `docs/`) (if applicable)
