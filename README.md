@@ -78,8 +78,11 @@ paste this:
 
 ```text
 Set up the Neovim plugin i18n-inline.nvim for this repository.
-Docs: https://github.com/BitYoungjae/i18n-inline.nvim (README.md and
-docs/configuration.md).
+Docs (fetch both in full as raw files, not the GitHub HTML pages):
+- https://raw.githubusercontent.com/BitYoungjae/i18n-inline.nvim/master/README.md
+- https://raw.githubusercontent.com/BitYoungjae/i18n-inline.nvim/master/docs/configuration.md
+If you cannot fetch either one completely, stop and tell me instead of
+configuring from memory or guessing.
 
 1. Find out how this repo does i18n: the library, what translation calls
    look like in the code, where the translation files are, their format
