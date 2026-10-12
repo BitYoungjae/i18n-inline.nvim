@@ -122,6 +122,9 @@ configuring from memory or guessing.
 
 ## Usage
 
+The recordings use the keys suggested in [Setup](#setup); the plugin maps
+nothing by default. Every action is also a command.
+
 ### Every language at a glance
 
 ![Opening the language popover on two calls in a TSX file.](assets/hover.gif)
