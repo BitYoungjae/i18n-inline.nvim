@@ -80,6 +80,7 @@ t('modules load', function()
     'preview',
     'hover',
     'jump',
+    'lang',
     'check',
     'health',
   }) do
@@ -485,6 +486,10 @@ dofile(here .. '/regressions.lua')(t, eq, ok_, make_project, vim.fs.normalize(vi
 -- ===== catalogs (several translation directories per project) =====
 
 dofile(here .. '/catalogs.lua')(t, eq, ok_, make_project)
+
+-- ===== switching the preview language (:I18nLang) =====
+
+dofile(here .. '/lang.lua')(t, eq, ok_, make_project, vim.fs.normalize(vim.fn.fnamemodify(here .. '/..', ':p')))
 
 -- ===== real-repo smoke (optional, I18N_SMOKE_REPO) =====
 

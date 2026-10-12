@@ -12,6 +12,13 @@
 -- <Plug>(i18n-inline-toggle)): it cycles 'always' -> 'problems' -> 'never'
 -- for the session, starting from the configured `show`. Scanning and hover
 -- keep working in every mode; 'never' only hides the extmarks.
+--
+-- The language shown inline is switchable too (:I18nLang,
+-- <Plug>(i18n-inline-lang)): per project, for the session. Code defaults
+-- are only compared in the configured `preview_lang`, the language they are
+-- written in; another language shows its values without ≠ (missing keys
+-- still show). A buffer whose catalogs lack the switched language keeps
+-- the configured one. `st.lang` is the language a buffer was rendered in.
 
 local api = vim.api
 local uv = vim.uv
@@ -31,6 +38,10 @@ local show_override = nil
 -- The configured mode most recently seen while rendering, so the toggle
 -- cycle starts from the active project's `show` rather than global defaults.
 local last_cfg_show = nil
+-- Session-wide preview language per project root (:I18nLang); unset =
+-- the configured preview_lang. Keyed by root, so it outlives the project
+-- table being rebuilt when its file changes.
+local lang_override = {}
 
 local function ns()
   if not ns_id then
@@ -139,6 +150,23 @@ function M.toggle()
   return show_override
 end
 
+-- The language `project` is previewed in: the one :I18nLang switched to,
+-- else the configured preview_lang.
+function M.preview_lang(project)
+  return lang_override[project.root] or project.cfg.preview_lang
+end
+
+-- Preview `project` in `lang` for the session (the configured language
+-- drops the override) and re-render its buffers.
+function M.set_lang(project, lang)
+  lang_override[project.root] = lang ~= project.cfg.preview_lang and lang or nil
+  for buf, st in pairs(state) do
+    if st and st.project and st.project.root == project.root and api.nvim_buf_is_valid(buf) then
+      M.refresh(buf)
+    end
+  end
+end
+
 -- Is this buffer eligible for previewing, under the project's config?
 local function eligible(buf, cfg)
   if not api.nvim_buf_is_valid(buf) then
@@ -196,6 +224,7 @@ function M.clear(buf)
     st.matches = nil
     st.project = nil
     st.tick = nil
+    st.lang = nil
     M._unset_keymaps(buf, st)
   end
 end
@@ -228,11 +257,11 @@ local function elsewhere_text(m)
   return 'only in ' .. m.elsewhere[1].label .. more
 end
 
-local function build_virt_text(m, cfg)
+local function build_virt_text(m, cfg, lang)
   if m.status == 'missing' then
     local text = cfg.missing_text
     if m.in_source then
-      text = 'missing in ' .. cfg.preview_lang
+      text = 'missing in ' .. lang
     elseif m.elsewhere then
       text = elsewhere_text(m)
     end
@@ -269,7 +298,7 @@ local function render(buf, st, cfg)
   -- unchanged marks keep their identity and nothing flickers.
   local virt_ids = {}
   for i, m in ipairs(shown) do
-    local text, hl = build_virt_text(m, cfg)
+    local text, hl = build_virt_text(m, cfg, st.lang)
     local opts = {
       virt_text = { { text, hl } },
       virt_text_pos = cfg.position,
@@ -325,6 +354,7 @@ local ACTIONS = {
   hover = { plug = '<Plug>(i18n-inline-hover)', desc = 'i18n translations popover' },
   toggle = { plug = '<Plug>(i18n-inline-toggle)', desc = 'i18n cycle inline display' },
   jump = { plug = '<Plug>(i18n-inline-jump)', desc = 'i18n jump to translation file' },
+  lang = { plug = '<Plug>(i18n-inline-lang)', desc = 'i18n switch preview language' },
 }
 
 function M._unset_keymaps(buf, st)
@@ -372,7 +402,11 @@ function M.refresh(buf)
     return
   end
 
-  local view = resolve.view(project, resolve.buf_path(buf))
+  local path = resolve.buf_path(buf)
+  local view = resolve.view(project, path, nil, M.preview_lang(project))
+  if view.lang ~= cfg.preview_lang and resolve.preview_error(view) then
+    view = resolve.view(project, path, nil, cfg.preview_lang)
+  end
   local err = resolve.preview_error(view)
   if err then
     -- Notify once per project, then stay quiet
@@ -406,6 +440,7 @@ function M.refresh(buf)
   st.project = project
   st.matches = matches
   st.tick = tick
+  st.lang = view.lang
 
   apply_keymaps(buf, st, cfg)
   render(buf, st, cfg)
@@ -448,6 +483,7 @@ function M._reset()
   state = {}
   show_override = nil
   last_cfg_show = nil
+  lang_override = {}
 end
 
 return M

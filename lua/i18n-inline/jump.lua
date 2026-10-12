@@ -6,7 +6,8 @@
 -- time — see formats.lua for why the decode cache cannot serve this).
 --
 -- Modes (config `jump.lang`, `jump.open`, or a one-shot override):
---   lang  = 'preview' (default) | 'source' | 'ask' (vim.ui.select)
+--   lang  = 'preview' (default: the language shown inline, which :I18nLang
+--           may have switched) | 'source' | 'ask' (vim.ui.select)
 --   open  = 'edit' (default) | 'split' | 'vsplit' | 'tab'
 -- `:I18nJump!` / open='quickfix' fills the quickfix list with the key's
 -- line in every language, for walking translations with :cnext.
@@ -144,11 +145,11 @@ end
 
 -- Quickfix variant: one item per language that has the key, in every
 -- catalog the popover would show.
-local function jump_quickfix(project, holders, key)
+local function jump_quickfix(project, holders, key, shown)
   local items, missing = {}, {}
   local labeled = #project.catalogs > 1
   for _, catalog in ipairs(holders) do
-    for _, lang in ipairs(resolve.sorted_langs(catalog)) do
+    for _, lang in ipairs(resolve.sorted_langs(catalog, shown)) do
       local value = resolve.value(catalog, lang, key)
       local name = labeled and ('%s:%s'):format(catalog.label, lang) or lang
       if value == nil then
@@ -187,11 +188,12 @@ function M.jump(opts)
   local cfg = project.cfg
   local jcfg = cfg.jump or {}
   local open = opts.bang and 'quickfix' or (jcfg.open or 'edit')
+  local shown = preview.state(0).lang
   local view = resolve.view(project, resolve.buf_path(0))
   local holders = resolve.holders(view, m)
 
   if open == 'quickfix' then
-    jump_quickfix(project, holders, m.key)
+    jump_quickfix(project, holders, m.key, shown)
     return
   end
 
@@ -206,20 +208,20 @@ function M.jump(opts)
   if opts.lang then
     lang = opts.lang
   elseif jcfg.lang == 'ask' then
-    vim.ui.select(resolve.sorted_langs(catalog), { prompt = 'i18n jump to language:' }, function(choice)
+    vim.ui.select(resolve.sorted_langs(catalog, shown), { prompt = 'i18n jump to language:' }, function(choice)
       if choice then
         jump_lang(catalog, choice, m.key, open, note)
       end
     end)
     return
   else
-    lang = jcfg.lang == 'source' and cfg.source_lang or cfg.preview_lang
+    lang = jcfg.lang == 'source' and cfg.source_lang or shown
   end
   if not lang or not catalog.langs[lang] then
     notify(
       ('no translation file for "%s" (available: %s)'):format(
         tostring(lang),
-        table.concat(resolve.sorted_langs(catalog), ', ')
+        table.concat(resolve.sorted_langs(catalog, shown), ', ')
       ),
       vim.log.levels.WARN
     )

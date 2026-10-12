@@ -507,13 +507,17 @@ function M.project_from(base_path)
   return project
 end
 
--- Language codes ordered for display: preview language first, then the
--- source language, then alphabetical. Takes a catalog (anything with
--- `cfg` and `langs`).
-function M.sorted_langs(catalog)
+-- Language codes ordered for display: `first` (the language shown inline,
+-- when :I18nLang switched it), then the preview language, then the source
+-- language, then alphabetical. Takes a catalog (anything with `cfg` and
+-- `langs`).
+function M.sorted_langs(catalog, first)
   local cfg = catalog.cfg
   local rank = function(l)
-    return l == cfg.preview_lang and 0 or (l == cfg.source_lang and 1 or 2)
+    if l == first then
+      return 0
+    end
+    return l == cfg.preview_lang and 1 or (l == cfg.source_lang and 2 or 3)
   end
   local langs = vim.tbl_keys(catalog.langs)
   table.sort(langs, function(a, b)
@@ -595,11 +599,24 @@ function M.catalogs_for(project, path)
   return found
 end
 
+-- The languages of the catalogs source file `path` reads, in sorted_langs
+-- order (:I18nJump and :I18nLang complete and pick from these).
+function M.langs_for(project, path)
+  local langs = {}
+  for _, catalog in ipairs(M.catalogs_for(project, path)) do
+    for lang, file in pairs(catalog.langs) do
+      langs[lang] = file
+    end
+  end
+  return M.sorted_langs({ cfg = project.cfg, langs = langs })
+end
+
 -- A lookup context for one source file: the catalogs it reads, the rest of
 -- the project's, and a memo of key tables for one pass (a refresh, an
 -- audit) so lookups cost a table index, not a stat per key. Pass the same
--- `memo` to views of one pass to share it.
-function M.view(project, path, memo)
+-- `memo` to views of one pass to share it. `lang` is the language to look
+-- keys up in (default: the preview language; :I18nLang switches it).
+function M.view(project, path, memo, lang)
   local mine, others = {}, {}
   local catalogs = M.catalogs_for(project, path)
   for _, catalog in ipairs(catalogs) do
@@ -610,7 +627,12 @@ function M.view(project, path, memo)
       others[#others + 1] = catalog
     end
   end
-  return { project = project, catalogs = catalogs, others = others, memo = memo or {} }
+  return { project = project, catalogs = catalogs, others = others, memo = memo or {}, lang = lang }
+end
+
+-- The language a view looks keys up in.
+local function view_lang(view)
+  return view.lang or view.project.cfg.preview_lang
 end
 
 -- Key table of `catalog` in `lang` through the view's memo, or nil.
@@ -628,14 +650,13 @@ function M.keys(view, catalog, lang)
   return keys or nil
 end
 
--- Look `key` up for a view. Returns, when the preview language has it:
+-- Look `key` up for a view. Returns, when the view's language has it:
 --   value, catalog
 -- otherwise:
 --   nil, catalog (its source language has the key: a translation gap) | nil,
 --   in_source, elsewhere (the other catalogs that have the key)
 function M.find(view, key)
-  local cfg = view.project.cfg
-  local preview, source = cfg.preview_lang, cfg.source_lang
+  local preview, source = view_lang(view), view.project.cfg.source_lang
   if source == preview then
     source = nil
   end
@@ -666,7 +687,9 @@ end
 
 -- Classify a scan match for a view: sets m.status ('match' | 'mismatch' |
 -- 'missing' | 'novalue'), m.value, m.catalog (where the key was found),
--- m.in_source and m.elsewhere (non-empty list or nil).
+-- m.in_source and m.elsewhere (non-empty list or nil). Code defaults are
+-- written in the preview language, so a view in another language shows
+-- values without comparing them ('novalue').
 function M.classify(view, m)
   local value, catalog, in_source, elsewhere = M.find(view, m.key)
   m.catalog = catalog
@@ -674,6 +697,8 @@ function M.classify(view, m)
   m.elsewhere = elsewhere and #elsewhere > 0 and elsewhere or nil
   if value == nil then
     m.status, m.value = 'missing', nil
+  elseif view_lang(view) ~= view.project.cfg.preview_lang then
+    m.status, m.value = 'novalue', value
   else
     m.status, m.value = scan.compare(m, value, view.project.cfg)
   end
@@ -699,10 +724,10 @@ function M.holders(view, m)
   return out
 end
 
--- nil when some catalog of the view loads the preview language, else the
+-- nil when some catalog of the view loads the view's language, else the
 -- first error (nothing can render without it).
 function M.preview_error(view)
-  local lang = view.project.cfg.preview_lang
+  local lang = view_lang(view)
   local first
   for _, catalog in ipairs(view.catalogs) do
     local keys, err = M.ensure_lang(catalog, lang)
