@@ -141,6 +141,8 @@ language into the quickfix list. `<C-o>` takes you back.
 
 ### Read it in another language
 
+![Picking ja from a list of the project's languages: the inline values turn Japanese, the key ja hasn't translated yet shows ✗ missing in ja, and :I18nLang en puts English back.](assets/lang.gif)
+
 `:I18nLang ja` shows the Japanese values inline instead, in every buffer
 of the project, until you switch back or quit Neovim. The lang key (or
 `:I18nLang` with no language) lets you pick from a list, the same way
