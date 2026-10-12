@@ -11,11 +11,14 @@
 --     for the session (popover and audit keep working).
 --   - <Plug>(i18n-inline-jump) / :I18nJump: open the translation file at
 --     the key under the cursor.
+--   - <Plug>(i18n-inline-lang) / :I18nLang: switch the language shown
+--     inline for the session.
 --   - :I18nCheck: project-wide audit into the quickfix list.
 --
 -- No default keymaps ship (R6.7): map the <Plug> mappings or set
--- `keymaps = { hover = …, toggle = …, jump = … }`. Keymaps are applied
--- buffer-locally per project, from setup() and the project file alike.
+-- `keymaps = { hover = …, toggle = …, jump = …, lang = … }`. Keymaps are
+-- applied buffer-locally per project, from setup() and the project file
+-- alike.
 -- Commands and <Plug> mappings live in plugin/i18n-inline.lua and work
 -- without setup(); setup() adds configuration and automatic rendering.
 --
@@ -121,6 +124,11 @@ end
 
 function M.jump(opts)
   require('i18n-inline.jump').jump(opts)
+end
+
+---@param lang string|nil the language to show inline; nil asks
+function M.lang(lang)
+  require('i18n-inline.lang').lang(lang)
 end
 
 function M.check()

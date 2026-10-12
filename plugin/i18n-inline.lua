@@ -4,7 +4,8 @@
 -- the actions below resolve the project on demand either way.
 --
 -- No default keymaps ship (R6.7): every action is reachable via these
--- <Plug> mappings and :I18nHover / :I18nToggle / :I18nJump / :I18nCheck.
+-- <Plug> mappings and :I18nHover / :I18nToggle / :I18nJump / :I18nLang /
+-- :I18nCheck.
 if vim.g.loaded_i18n_inline then
   return
 end
@@ -46,6 +47,24 @@ vim.keymap.set('n', '<Plug>(i18n-inline-jump)', function()
   i18n().jump()
 end, { silent = true, desc = 'i18n: open the translation file at the key under the cursor' })
 
+vim.keymap.set('n', '<Plug>(i18n-inline-lang)', function()
+  i18n().lang()
+end, { silent = true, desc = 'i18n: pick the language shown inline' })
+
+-- The languages of the catalogs the current buffer reads. A Lua completion
+-- function is customlist-style: filtering is ours.
+local function complete_langs(arglead)
+  local resolve = require('i18n-inline.resolve')
+  local buf = api.nvim_get_current_buf()
+  local project = resolve.project_for(buf)
+  if not project then
+    return {}
+  end
+  return vim.tbl_filter(function(lang)
+    return vim.startswith(lang, arglead)
+  end, resolve.langs_for(project, resolve.buf_path(buf)))
+end
+
 api.nvim_create_user_command('I18nCheck', function()
   i18n().check()
 end, { desc = 'i18n: audit drift project-wide (quickfix)' })
@@ -63,24 +82,14 @@ api.nvim_create_user_command('I18nJump', function(ev)
 end, {
   bang = true,
   nargs = '?',
-  -- A Lua completion function is customlist-style: filtering is ours.
-  complete = function(arglead)
-    local resolve = require('i18n-inline.resolve')
-    local buf = api.nvim_get_current_buf()
-    local project = resolve.project_for(buf)
-    if not project then
-      return {}
-    end
-    -- the languages of the catalogs this buffer reads
-    local langs = {}
-    for _, catalog in ipairs(resolve.catalogs_for(project, resolve.buf_path(buf))) do
-      for lang, path in pairs(catalog.langs) do
-        langs[lang] = path
-      end
-    end
-    return vim.tbl_filter(function(lang)
-      return vim.startswith(lang, arglead)
-    end, resolve.sorted_langs({ cfg = project.cfg, langs = langs }))
-  end,
+  complete = complete_langs,
   desc = 'i18n: open the translation file at the key under the cursor (<lang> = specific language, ! = all languages)',
+})
+
+api.nvim_create_user_command('I18nLang', function(ev)
+  i18n().lang(ev.args ~= '' and ev.args or nil)
+end, {
+  nargs = '?',
+  complete = complete_langs,
+  desc = 'i18n: switch the language shown inline for the session (no argument = pick one)',
 })

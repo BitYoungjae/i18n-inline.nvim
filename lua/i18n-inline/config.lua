@@ -51,7 +51,8 @@ local defaults = {
   key_style = 'flat',
   -- Path separator for key_style='nested' and namespace composition.
   separator = '.',
-  -- Language shown in the inline preview.
+  -- Language shown in the inline preview, and the one code defaults are
+  -- compared against. :I18nLang shows another for the session.
   preview_lang = 'ko',
   -- Source language (R2.3/R5.3): the locale that owns the key set. When
   -- set, keys missing from other files are audited against it, and a key
@@ -107,14 +108,16 @@ local defaults = {
   },
   underline_mismatch = true, -- underline the fallback string on mismatch
   -- Action keymaps (R6.7): no defaults ship — map `<Plug>(i18n-inline-hover)`
-  -- / `<Plug>(i18n-inline-toggle)` / `<Plug>(i18n-inline-jump)` or
-  -- :I18nHover / :I18nToggle / :I18nJump yourself, or set these. Applied per
-  -- buffer (buffer-local) once its project resolves, so they also work from
-  -- the project file and never leak globally.
+  -- / `<Plug>(i18n-inline-toggle)` / `<Plug>(i18n-inline-jump)` /
+  -- `<Plug>(i18n-inline-lang)` or :I18nHover / :I18nToggle / :I18nJump /
+  -- :I18nLang yourself, or set these. Applied per buffer (buffer-local) once
+  -- its project resolves, so they also work from the project file and never
+  -- leak globally.
   keymaps = {
     hover = nil,
     toggle = nil,
     jump = nil,
+    lang = nil,
   },
   keymap = nil, -- deprecated alias for keymaps.hover
   -- :I18nJump — open the translation file at the key under the cursor.
@@ -213,7 +216,7 @@ local schema = {
   show = { enum = { 'always', 'problems', 'never' } },
   hl = { fields = { match = 'string', mismatch = 'string', missing = 'string', underline = 'string' } },
   underline_mismatch = 'boolean',
-  keymaps = { fields = { hover = 'string', toggle = 'string', jump = 'string' } },
+  keymaps = { fields = { hover = 'string', toggle = 'string', jump = 'string', lang = 'string' } },
   keymap = 'string',
   jump = {
     fields = {

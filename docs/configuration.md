@@ -200,7 +200,7 @@ The same keys work in `setup()` and in the project file.
 | `format` | `nil` | `'json'`, `'arb'` or `'po'`; `nil` picks by extension |
 | `key_style` | `'flat'` | `'nested'` reads `{"a": {"b": …}}` as key `a.b` |
 | `separator` | `'.'` | joins nested paths and namespaces (`':'` for `ns:key` setups) |
-| `preview_lang` | `'ko'` | the language shown inline |
+| `preview_lang` | `'ko'` | the language shown inline, and the one code defaults are compared in. `:I18nLang` shows another for the session |
 | `source_lang` | `nil` | the language that owns the key set; turns on "missing in `<lang>`" markers and cross-language checks |
 | `filetypes` | `{'clojure'}` | filetypes to scan |
 | `patterns` | ClojureScript `tr` calls | Lua patterns that find calls, see [Writing patterns](#writing-patterns). The defaults match `(tr [:key …])`, `(tr-release [:key …])`, `(i18n/tr [:key …])` and `(i18n/tr-release [:key …])` |
@@ -217,8 +217,8 @@ The same keys work in `setup()` and in the project file.
 | `show` | `'always'` | `'always'`, `'problems'` or `'never'` |
 | `hl` | `I18nInline*` groups | highlight groups for match, mismatch, missing and underline |
 | `underline_mismatch` | `true` | underline a default that differs from the file |
-| `keymaps` | `{}` | `{ hover = …, jump = …, toggle = … }`, set per project buffer |
-| `jump.lang` | `'preview'` | which file `:I18nJump` opens: `'preview'`, `'source'` or `'ask'` |
+| `keymaps` | `{}` | `{ hover = …, jump = …, toggle = …, lang = … }`, set per project buffer |
+| `jump.lang` | `'preview'` | which file `:I18nJump` opens: `'preview'` (the language shown inline), `'source'` or `'ask'` |
 | `jump.open` | `'edit'` | `'edit'`, `'split'`, `'vsplit'`, `'tab'` or `'quickfix'` |
 | `hover` | `{ max_len = 60, width = 60, max_height = 20 }` | popover size. `hover.border` defaults to `'winborder'` if set, else `'rounded'` |
 | `extmark_priority` | `nil` | raise it if another plugin's virtual text draws over the value |
@@ -333,8 +333,8 @@ nvim --headless +I18nCheck "+sleep 2" "+redir! > /tmp/i18n-check.txt" \
 
 ## Jumping
 
-`:I18nJump` opens the preview language's file, or the one `jump.lang`
-names. `'ask'` asks every time, and `:I18nJump <lang>` picks one for a
+`:I18nJump` opens the file of the language shown inline (the preview
+language, unless `:I18nLang` switched it), or the one `jump.lang` names. `'ask'` asks every time, and `:I18nJump <lang>` picks one for a
 single jump. If the key is missing there but exists in `source_lang`, the
 source file opens instead, with a warning. A key that's only in another
 catalog opens that catalog's file, also with a warning. When the translation file is

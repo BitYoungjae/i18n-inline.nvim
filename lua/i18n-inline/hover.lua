@@ -4,6 +4,10 @@
 -- truncated per line, window width/height bounded (long content wraps rather
 -- than growing the popover without limit).
 --
+-- The language shown inline comes first (:I18nLang may have switched it);
+-- the mismatch mark stays on the preview language, the one code defaults
+-- are written in.
+--
 -- In a project with several catalogs, every catalog the file reads that has
 -- the key gets a named section (a shared component fed by two catalogs
 -- shows both); a key only found elsewhere shows those catalogs, marked.
@@ -57,6 +61,7 @@ function M.hover()
   close()
   local cfg = project.cfg
   local hcfg = cfg.hover or {}
+  local shown = preview.state(0).lang
   local view = resolve.view(project, resolve.buf_path(0))
   local holders = resolve.holders(view, m)
   -- With several catalogs each section names its own; a lone catalog
@@ -94,7 +99,7 @@ function M.hover()
       lines[#lines + 1] = catalog.label .. note
       line_meta[#lines] = { header = true }
     end
-    for _, lang in ipairs(resolve.sorted_langs(catalog)) do
+    for _, lang in ipairs(resolve.sorted_langs(catalog, shown)) do
       local keys = resolve.keys(view, catalog, lang)
       local value = keys and keys[m.key]
       local display = value ~= nil and util.truncate(util.display_value(value), max_len) or '(missing)'

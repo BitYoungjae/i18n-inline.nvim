@@ -53,6 +53,8 @@ preview.lua   per-buffer state, debounced refresh, extmark rendering, display
 hover.lua     per-language popover (own float, single instance, close-on-move)
 jump.lua      :I18nJump — open the translation file at the key under the
               cursor (per-format line location via formats.find_line)
+lang.lua      :I18nLang — switch the language shown inline (picker,
+              validation); the per-project state lives in preview.lua
 check.lua     project-wide audit -> quickfix, batched; per-catalog gaps and
               unused keys, ignore globs, nested projects skipped
 health.lua    :checkhealth — project, catalogs, formats, unknown keys,
@@ -135,6 +137,22 @@ Key decisions (generalization round, settling REQUIREMENTS' open questions):
 - **No coupling to external CLI config (Q5).** next-app's `i18n-check`
   ignore list is copied into `.i18n-inline.json` manually; reading
   package.json script args would couple the plugin to one tool's argv shape.
+- **The preview language switch is per project, for the session
+  (:I18nLang).** Projects have different language sets, so one global
+  value would name a language most of them lack; the override is keyed by
+  project root, which outlives the project table being rebuilt when its
+  file changes. Code defaults are written in the configured
+  `preview_lang`, so a view in another language classifies values as
+  `novalue`: comparing a Korean value with an English default would put
+  `≠` on every call. Missing keys still show (`missing in ja` with
+  `source_lang`), which is what a translator switches for. The popover
+  keeps the mismatch mark on `preview_lang`, and the audit and health keep
+  the configured language: they describe the project, not the view. Views
+  carry the language (`resolve.view(…, lang)`), so nothing else had to
+  learn about the switch. A buffer whose catalogs lack the switched
+  language keeps the configured one rather than going blank. The picker
+  keeps a fixed order (configured first) and marks the current language,
+  so entries don't move between switches.
 - **Display toggle is a session-wide 3-mode cycle (Q6):** effective show =
   runtime override (`always → problems → never`) or the configured `show`.
   Scanning and hover keep working under 'never'; only the extmarks disappear.

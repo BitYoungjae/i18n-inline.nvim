@@ -30,14 +30,15 @@ dependencies.
 {
   'BitYoungjae/i18n-inline.nvim',
   opts = {
-    keymaps = { hover = '<leader>ii', jump = '<leader>ij', toggle = '<leader>ui' },
+    keymaps = { hover = '<leader>ii', jump = '<leader>ij', toggle = '<leader>ui', lang = '<leader>il' },
   },
 }
 ```
 
 The plugin maps nothing by default, so the keys above are only a
 suggestion. You can also map `<Plug>(i18n-inline-hover)`,
-`<Plug>(i18n-inline-jump)` and `<Plug>(i18n-inline-toggle)` yourself.
+`<Plug>(i18n-inline-jump)`, `<Plug>(i18n-inline-toggle)` and
+`<Plug>(i18n-inline-lang)` yourself.
 (LazyVim users: skip `gK`. LazyVim takes it per buffer when an LSP
 attaches.)
 
@@ -97,8 +98,8 @@ configuring from memory or guessing.
    which language to preview.
 3. Add the plugin to my Neovim config with the plugin manager I already
    use, without lazy-loading it (no ft/event/cmd triggers; with lazy.nvim
-   `keys`, also set lazy = false), and map hover, jump and toggle to keys
-   that are free in my config.
+   `keys`, also set lazy = false), and map hover, jump, toggle and lang to
+   keys that are free in my config.
 4. From the repo root, run
      nvim --headless "+checkhealth i18n-inline" "+w! /tmp/i18n-health.txt" +qa
    and fix the config until the project is found, every translation file
@@ -121,6 +122,9 @@ configuring from memory or guessing.
 
 ## Usage
 
+The recordings use the keys suggested in [Setup](#setup); the plugin maps
+nothing by default. Every action is also a command.
+
 ### Every language at a glance
 
 ![Opening the language popover on two calls in a TSX file.](assets/hover.gif)
@@ -133,10 +137,25 @@ When the preview language differs from the code, it's highlighted.
 
 ![Jumping from a call to its line in en.json and ko.json, then listing it in every language with :I18nJump!.](assets/jump.gif)
 
-The jump key (`:I18nJump`) opens the preview language's file on the key's
-line. `:I18nJump ko` opens a specific language and tab-completes the
-names. `:I18nJump!` puts the key's line from every language into the
-quickfix list. `<C-o>` takes you back.
+The jump key (`:I18nJump`) opens the file of the language shown inline,
+on the key's line. `:I18nJump ko` opens a specific language and
+tab-completes the names. `:I18nJump!` puts the key's line from every
+language into the quickfix list. `<C-o>` takes you back.
+
+### Read it in another language
+
+![Picking ja from a list of the project's languages: the inline values turn Japanese, the key ja hasn't translated yet shows ✗ missing in ja, and :I18nLang en puts English back.](assets/lang.gif)
+
+`:I18nLang ja` shows the Japanese values inline instead, in every buffer
+of the project, until you switch back or quit Neovim. The lang key (or
+`:I18nLang` with no language) lets you pick from a list, the same way
+`jump.lang = 'ask'` does; pick the preview language to go back. The
+popover lists the shown language first, and the jump key opens its file.
+
+Code defaults are written in the preview language, so `≠` only shows
+there. In another language you see its values, plus `✗ missing in ja` for
+keys it hasn't translated yet (with `source_lang` set). `:I18nCheck`
+always compares in the preview language.
 
 ### Edits show up right away
 
@@ -173,6 +192,7 @@ every mode. To start in a quieter mode, set `show = 'problems'`.
 | `:I18nHover` | popover with the key in every language |
 | `:I18nJump [lang]` | open the translation file at the key (`!` lists every language in quickfix) |
 | `:I18nToggle` | cycle inline display: always, problems, never |
+| `:I18nLang [lang]` | show another language inline for the session (no language: pick one) |
 | `:I18nCheck` | audit the project into the quickfix list |
 | `:checkhealth i18n-inline` | check the setup for the current buffer's project |
 
